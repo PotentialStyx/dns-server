@@ -1,5 +1,3 @@
-use bytes::Bytes;
-
 use super::BytesBuf;
 
 pub trait Parsable {

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::parser::{OpCode, RecordClass, RecordType, ResCode};
 
-use super::{Domain, Header, Parsable, Question, ResourceRecord};
+use super::{Domain, Header, Message, Parsable, Question, ResourceRecord};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParserError {
@@ -67,16 +67,28 @@ impl Parsable for Domain {
             }
 
             // Conversion shouldn't fail as this will never target a less than 8 bit system.
-            let len: usize = buf.in_use.get_u8().into();
+            let len = buf.in_use.get_u8();
 
             if len == 0 {
                 break;
             }
 
             if (len >> 6) == 0b11 {
-                todo!("domain ptr");
-                // break;
+                let left = len as u16 ^ 0xC0; // 0b11000000
+                let right = buf.in_use.get_u8() as u16;
+
+                let ptr = ((left << 8) + right) as usize;
+
+                let mut original = BytesBuf::from_bytes(buf.get_original());
+                original.in_use.advance(ptr);
+
+                let mut compressed = Domain::parse(&mut original)?;
+                result.append(&mut compressed.0);
+
+                break;
             }
+
+            let len: usize = len.into();
 
             if buf.in_use.remaining() < len {
                 return Err(ParserError::NotEnoughBytes {
@@ -223,6 +235,45 @@ impl Parsable for ResourceRecord {
             rclass,
             ttl,
             data,
+        })
+    }
+}
+
+impl Parsable for Message {
+    type Error = ParserError;
+
+    fn parse(buf: &mut BytesBuf) -> Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        let header = Header::parse(buf)?;
+
+        let mut questions = vec![];
+        for _ in 0..header.questions {
+            questions.push(Question::parse(buf)?);
+        }
+
+        let mut answers = vec![];
+        for _ in 0..header.answer_records {
+            answers.push(ResourceRecord::parse(buf)?);
+        }
+
+        let mut authorities = vec![];
+        for _ in 0..header.authority_records {
+            authorities.push(ResourceRecord::parse(buf)?);
+        }
+
+        let mut additional = vec![];
+        for _ in 0..header.additional_records {
+            additional.push(ResourceRecord::parse(buf)?);
+        }
+
+        Ok(Message {
+            header,
+            questions,
+            answers,
+            authorities,
+            additional,
         })
     }
 }
