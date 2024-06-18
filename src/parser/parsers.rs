@@ -1,9 +1,12 @@
 use core::str::Utf8Error;
+use std::fmt::Error;
 
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
-use super::Domain;
+use crate::parser::{OpCode, ResCode};
+
+use super::{Domain, Header, Parsable};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParserError {
@@ -52,15 +55,9 @@ impl BytesBuf {
     }
 }
 
-pub trait Parsable {
-    /// Parses data in `data` into type, without incrementing it's pointer
-    fn parse(data: &Bytes) -> Result<Self, ParserError>
-    where
-        Self: std::marker::Sized;
-}
-
 impl Parsable for Domain {
-    fn parse(data: &Bytes) -> Result<Self, ParserError> {
+    type Error = ParserError;
+    fn parse(data: &Bytes) -> Result<Self, Self::Error> {
         let mut result = vec![];
         let mut buf = BytesBuf::from_bytes(data.clone());
         loop {
@@ -109,5 +106,58 @@ impl Parsable for Domain {
         }
 
         Ok(Domain(result))
+    }
+}
+
+impl Parsable for Header {
+    type Error = ParserError;
+    fn parse(data: &Bytes) -> Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        let mut buf = BytesBuf::from_bytes(data.clone());
+
+        if buf.in_use.len() < 12 {
+            return Err(ParserError::NotEnoughBytes {
+                expected: 12,
+                recieved: buf.in_use.len(),
+            });
+        }
+
+        // Id is just a normal u16
+        let id = buf.in_use.get_u16();
+
+        // The next few pieces of data are all stored in this same u16 value
+        let chunk = buf.in_use.get_u16();
+
+        let is_response = chunk >> 15 == 1;
+        let opcode: OpCode = ((chunk >> 11) & 0xf).into();
+        let is_authoritative = (chunk >> 10) & 0b1 == 1;
+        let is_truncated = (chunk >> 9) & 0b1 == 1;
+        let should_recurse = (chunk >> 8) & 0b1 == 1;
+        let recursion_available = (chunk >> 7) & 0b1 == 1;
+        let _z = ((chunk >> 4) & 0b111) as u8;
+        let rescode: ResCode = (chunk & 0xF).into();
+
+        let question_count: u16 = buf.in_use.get_u16();
+        let answer_record_count: u16 = buf.in_use.get_u16();
+        let authority_record_count: u16 = buf.in_use.get_u16();
+        let additional_record_count: u16 = buf.in_use.get_u16();
+
+        Ok(Header {
+            id,
+            is_response,
+            opcode,
+            is_authoritative,
+            is_truncated,
+            should_recurse,
+            recursion_available,
+            _z,
+            rescode,
+            questions: question_count,
+            answer_records: answer_record_count,
+            authority_records: authority_record_count,
+            additional_records: additional_record_count,
+        })
     }
 }
