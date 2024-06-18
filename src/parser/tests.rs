@@ -1,5 +1,3 @@
-use bytes::Bytes;
-
 use super::*;
 
 mod enums {
@@ -76,7 +74,7 @@ mod domain {
     #[test]
     fn no_data() {
         // An empty buf should error
-        let domain_buf: Bytes = vec![].into();
+        let domain_buf: BytesBuf = BytesBuf::new(vec![]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -91,7 +89,7 @@ mod domain {
     fn not_enough_data() {
         // A domain name claiming to have a longer section than it really has should error
         // This buf claims to have 6 chars but only have 5, which spell out "hello"
-        let domain_buf: Bytes = vec![6, 104, 101, 108, 108, 111].into();
+        let domain_buf: BytesBuf = BytesBuf::new(vec![6, 104, 101, 108, 108, 111]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -105,7 +103,7 @@ mod domain {
     #[test]
     fn non_ascii_error() {
         // 😀 is an invalid domain because it isn't ascii
-        let domain_buf: Bytes = vec![4, 240, 159, 152, 128].into();
+        let domain_buf: BytesBuf = BytesBuf::new(vec![4, 240, 159, 152, 128]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -116,7 +114,7 @@ mod domain {
     #[test]
     fn non_utf8_error() {
         // Invalid utf-8 sequence from https://stackoverflow.com/a/17199164/15264500
-        let domain_buf: Bytes = vec![2, 0xc3, 0x28].into();
+        let domain_buf: BytesBuf = BytesBuf::new(vec![2, 0xc3, 0x28]);
 
         assert!(matches!(
             Domain::parse(&domain_buf),
@@ -127,10 +125,9 @@ mod domain {
     #[test]
     fn correct_hackclub_decoding() {
         // 3 www, 8 hackclub, 3 com, 0
-        let domain_buf: Bytes = vec![
+        let domain_buf: BytesBuf = BytesBuf::new(vec![
             3, 119, 119, 119, 8, 104, 97, 99, 107, 99, 108, 117, 98, 3, 99, 111, 109, 0,
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -141,10 +138,9 @@ mod domain {
     #[test]
     fn invalid_hackclub_decoding() {
         // 3 www, 10! hackclub, 3 com, 0
-        let domain_buf: Bytes = vec![
+        let domain_buf: BytesBuf = BytesBuf::new(vec![
             3, 119, 119, 119, 10, 104, 97, 99, 107, 99, 108, 117, 98, 3, 99, 111, 109, 0,
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -158,10 +154,9 @@ mod domain {
     #[test]
     fn correct_google_decoding() {
         // 3 www, 6 google, 3 com, 0
-        let domain_buf: Bytes = vec![
+        let domain_buf: BytesBuf = BytesBuf::new(vec![
             3, 119, 119, 119, 6, 103, 111, 111, 103, 108, 101, 3, 99, 111, 109, 0,
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -172,10 +167,9 @@ mod domain {
     #[test]
     fn invalid_google_decoding() {
         // 3 www, 7! google, 3 com, 0
-        let domain_buf: Bytes = vec![
+        let domain_buf: BytesBuf = BytesBuf::new(vec![
             3, 119, 119, 119, 7, 103, 111, 111, 103, 108, 101, 3, 99, 111, 109, 0,
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Domain::parse(&domain_buf),
@@ -192,7 +186,7 @@ mod header {
 
     #[test]
     fn not_enough_data() {
-        let header_buf: Bytes = vec![].into();
+        let header_buf: BytesBuf = BytesBuf::new(vec![]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -205,15 +199,14 @@ mod header {
 
     #[test]
     fn correct_id() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x13, 0x37, // ID: 0x1337
             0x00, 0x00, // Everything is 0
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -237,15 +230,14 @@ mod header {
 
     #[test]
     fn correct_is_response() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x80, 0x00, // Only is_response: true
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -269,15 +261,14 @@ mod header {
 
     #[test]
     fn correct_opcode() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x70, 0x00, // Only opcode: 0xE
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -301,15 +292,14 @@ mod header {
 
     #[test]
     fn correct_is_authoritative() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x04, 0x00, // Only is_authoritative: true
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -333,15 +323,14 @@ mod header {
 
     #[test]
     fn correct_is_truncated() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x02, 0x00, // Only is_truncated: true
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -365,15 +354,14 @@ mod header {
 
     #[test]
     fn correct_should_recurse() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x01, 0x00, // Only should_recurse: true
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -397,15 +385,14 @@ mod header {
 
     #[test]
     fn correct_recursion_available() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x80, // Only recursion_available: true
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -429,15 +416,14 @@ mod header {
 
     #[test]
     fn correct_z() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x70, // Only _z: 0x7
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -461,15 +447,14 @@ mod header {
 
     #[test]
     fn correct_rescode() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x0E, // Only rescode: 0xE
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -493,15 +478,14 @@ mod header {
 
     #[test]
     fn correct_questions() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x00, // Everything is 0
             0x13, 0x37, // Questions: 0x1337
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -525,15 +509,14 @@ mod header {
 
     #[test]
     fn correct_answers() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x00, // Everything is 0
             0x00, 0x00, // Questions: 0
             0x13, 0x37, // Answers: 0x1337
             0x00, 0x00, // Authorities: 0
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -557,15 +540,14 @@ mod header {
 
     #[test]
     fn correct_authorities() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x00, // Everything is 0
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x13, 0x37, // Authorities: 0x1337
             0x00, 0x00, // Additional: 0
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),
@@ -589,15 +571,14 @@ mod header {
 
     #[test]
     fn correct_additional() {
-        let header_buf: Bytes = vec![
+        let header_buf: BytesBuf = BytesBuf::new(vec![
             0x00, 0x00, // ID: 0
             0x00, 0x00, // Everything is 0
             0x00, 0x00, // Questions: 0
             0x00, 0x00, // Answers: 0
             0x00, 0x00, // Authorities: 0
             0x13, 0x37, // Additional: 0x1337
-        ]
-        .into();
+        ]);
 
         assert_eq!(
             Header::parse(&header_buf),

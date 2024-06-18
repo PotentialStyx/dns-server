@@ -1,12 +1,11 @@
 use core::str::Utf8Error;
-use std::fmt::Error;
 
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
 use crate::parser::{OpCode, ResCode};
 
-use super::{Domain, Header, Parsable};
+use super::{Domain, Header, Parsable, Question};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParserError {
@@ -57,9 +56,9 @@ impl BytesBuf {
 
 impl Parsable for Domain {
     type Error = ParserError;
-    fn parse(data: &Bytes) -> Result<Self, Self::Error> {
+    fn parse(buf: &BytesBuf) -> Result<Self, Self::Error> {
         let mut result = vec![];
-        let mut buf = BytesBuf::from_bytes(data.clone());
+        let mut buf = buf.clone();
         loop {
             if buf.in_use.remaining() == 0 {
                 return Err(ParserError::NotEnoughBytes {
@@ -111,11 +110,11 @@ impl Parsable for Domain {
 
 impl Parsable for Header {
     type Error = ParserError;
-    fn parse(data: &Bytes) -> Result<Self, Self::Error>
+    fn parse(buf: &BytesBuf) -> Result<Self, Self::Error>
     where
         Self: std::marker::Sized,
     {
-        let mut buf = BytesBuf::from_bytes(data.clone());
+        let mut buf = buf.clone();
 
         if buf.in_use.len() < 12 {
             return Err(ParserError::NotEnoughBytes {
@@ -159,5 +158,17 @@ impl Parsable for Header {
             authority_records: authority_record_count,
             additional_records: additional_record_count,
         })
+    }
+}
+
+impl Parsable for Question {
+    type Error = ParserError;
+
+    fn parse(buf: &BytesBuf) -> Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        let buf = buf.clone();
+        todo!()
     }
 }
