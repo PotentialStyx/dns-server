@@ -3,9 +3,9 @@ use core::str::Utf8Error;
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
-use crate::parser::{OpCode, ResCode};
+use crate::parser::{OpCode, RecordClass, RecordType, ResCode};
 
-use super::{Domain, Header, Parsable, Question};
+use super::{Domain, Header, Parsable, Question, ResourceRecord};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParserError {
@@ -67,7 +67,7 @@ impl Parsable for Domain {
             }
 
             // Conversion shouldn't fail as this will never target a less than 8 bit system.
-            let len = buf.in_use.get_u8() as usize;
+            let len: usize = buf.in_use.get_u8().into();
 
             if len == 0 {
                 break;
@@ -181,6 +181,48 @@ impl Parsable for Question {
             name,
             qtype,
             qclass,
+        })
+    }
+}
+
+impl Parsable for ResourceRecord {
+    type Error = ParserError;
+
+    fn parse(buf: &mut BytesBuf) -> Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        let name = Domain::parse(buf)?;
+
+        if buf.in_use.remaining() < 8 {
+            return Err(ParserError::NotEnoughBytes {
+                expected: 8,
+                recieved: buf.in_use.remaining(),
+            });
+        }
+
+        let rtype: RecordType = buf.in_use.get_u16().into();
+        let rclass: RecordClass = buf.in_use.get_u16().into();
+        let ttl = buf.in_use.get_u32();
+
+        let data_len: usize = buf.in_use.get_u16().into();
+
+        if buf.in_use.remaining() < data_len {
+            return Err(ParserError::NotEnoughBytes {
+                expected: data_len,
+                recieved: buf.in_use.remaining(),
+            });
+        }
+
+        let data = buf.in_use.slice(0..data_len);
+        buf.in_use.advance(data_len);
+
+        Ok(ResourceRecord {
+            name,
+            rtype,
+            rclass,
+            ttl,
+            data,
         })
     }
 }

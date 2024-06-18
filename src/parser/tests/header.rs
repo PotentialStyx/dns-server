@@ -1,7 +1,7 @@
 use super::super::*;
 
 #[test]
-fn not_enough_data() {
+fn no_data() {
     let mut header_buf: BytesBuf = BytesBuf::new(vec![]);
 
     assert_eq!(
