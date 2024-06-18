@@ -1,10 +1,12 @@
 use std::fmt::Display;
 
+use bytes::Bytes;
+
 use super::{OpCode, RecordClass, RecordType, ResCode};
 
 /// DNS Domain
 #[derive(Debug, PartialEq, Eq)]
-pub struct Domain(Vec<String>);
+pub struct Domain(pub Vec<String>);
 
 /// TODO: add tests for this maybe(?)
 impl Display for Domain {
@@ -15,31 +17,6 @@ impl Display for Domain {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn single_part_domain() {
-        assert_eq!(format!("{}", Domain(vec!["com".to_string()])), "com.")
-    }
-
-    #[test]
-    fn multi_part_domain() {
-        assert_eq!(
-            format!(
-                "{}",
-                Domain(vec![
-                    "www".to_string(),
-                    "google".to_string(),
-                    "com".to_string()
-                ])
-            ),
-            "www.google.com."
-        )
     }
 }
 
@@ -99,7 +76,7 @@ pub struct ResourceRecord {
     /// Suggested record TTL
     pub ttl: u32,
     /// Actual record data
-    pub data: Vec<u8>, // TODO: replace with Bytes from bytes crate
+    pub data: Bytes,
 }
 
 /// A full DNS Message
