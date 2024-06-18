@@ -106,7 +106,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_enum_macro_recordclass() {
+    fn enum_macro_recordclass() {
         // RecordClass::IN
         let in_rec: u16 = RecordClass::IN.into();
         assert_eq!(in_rec, 1);

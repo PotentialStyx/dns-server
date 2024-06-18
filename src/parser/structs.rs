@@ -9,14 +9,37 @@ pub struct Domain(Vec<String>);
 /// TODO: add tests for this maybe(?)
 impl Display for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (idx, part) in self.0.iter().enumerate() {
+        for part in &self.0 {
             f.write_str(part)?;
-            if idx != self.0.len() - 1 {
-                f.write_str(".")?;
-            }
+            f.write_str(".")?;
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_part_domain() {
+        assert_eq!(format!("{}", Domain(vec!["com".to_string()])), "com.")
+    }
+
+    #[test]
+    fn multi_part_domain() {
+        assert_eq!(
+            format!(
+                "{}",
+                Domain(vec![
+                    "www".to_string(),
+                    "google".to_string(),
+                    "com".to_string()
+                ])
+            ),
+            "www.google.com."
+        )
     }
 }
 
