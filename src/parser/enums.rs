@@ -1,5 +1,3 @@
-use core::fmt::{Display, Error, Formatter};
-
 macro_rules! useful_enum {
     (
         $vis:vis enum $name:ident($unknown:ident, $type:ty) {
@@ -32,8 +30,8 @@ macro_rules! useful_enum {
             }
         }
 
-        impl Display for $name {
-            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        impl core::fmt::Display for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 match self {
                     $($name::$field => f.write_str(concat!(stringify!($name), "::", stringify!($field),"(",stringify!($value),")")),)*
                     $name::$unknown(s) => f.write_fmt(format_args!("{}::{}({s})", stringify!($name), stringify!($unknown))),
