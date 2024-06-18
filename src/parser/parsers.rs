@@ -56,9 +56,8 @@ impl BytesBuf {
 
 impl Parsable for Domain {
     type Error = ParserError;
-    fn parse(buf: &BytesBuf) -> Result<Self, Self::Error> {
+    fn parse(buf: &mut BytesBuf) -> Result<Self, Self::Error> {
         let mut result = vec![];
-        let mut buf = buf.clone();
         loop {
             if buf.in_use.remaining() == 0 {
                 return Err(ParserError::NotEnoughBytes {
@@ -110,12 +109,10 @@ impl Parsable for Domain {
 
 impl Parsable for Header {
     type Error = ParserError;
-    fn parse(buf: &BytesBuf) -> Result<Self, Self::Error>
+    fn parse(buf: &mut BytesBuf) -> Result<Self, Self::Error>
     where
         Self: std::marker::Sized,
     {
-        let mut buf = buf.clone();
-
         if buf.in_use.len() < 12 {
             return Err(ParserError::NotEnoughBytes {
                 expected: 12,
@@ -164,11 +161,26 @@ impl Parsable for Header {
 impl Parsable for Question {
     type Error = ParserError;
 
-    fn parse(buf: &BytesBuf) -> Result<Self, Self::Error>
+    fn parse(buf: &mut BytesBuf) -> Result<Self, Self::Error>
     where
         Self: std::marker::Sized,
     {
-        let buf = buf.clone();
-        todo!()
+        let name = Domain::parse(buf)?;
+
+        if buf.in_use.remaining() < 4 {
+            return Err(ParserError::NotEnoughBytes {
+                expected: 4,
+                recieved: buf.in_use.remaining(),
+            });
+        }
+
+        let qtype = buf.in_use.get_u16().into();
+        let qclass = buf.in_use.get_u16().into();
+
+        Ok(Question {
+            name,
+            qtype,
+            qclass,
+        })
     }
 }
