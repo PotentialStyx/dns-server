@@ -1,16 +1,83 @@
 use anyhow::Result;
+use bytes::{BufMut, BytesMut};
+use serializer::Serializable;
 use std::{
-    io::Read,
-    net::{TcpListener, UdpSocket},
+    io::{Read, Write},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket},
     thread,
 };
 
 use parser::{BytesBuf, Parsable};
-use types::Message;
+use types::{Domain, Header, Message, OpCode, Question, RecordClass, RecordType, ResCode};
 
 mod parser;
 mod serializer;
 mod types;
+
+fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
+    let mut _buf = BytesMut::new();
+    Message {
+        header: Header {
+            id: 0,
+            is_response: false,
+            opcode: OpCode::Query,
+            is_authoritative: false,
+            is_truncated: false,
+            should_recurse: false,
+            recursion_available: false,
+            _z: 0,
+            rescode: ResCode::NoError,
+            questions: 1,
+            answer_records: 0,
+            authority_records: 0,
+            additional_records: 0,
+        },
+        questions: vec![question],
+        answers: vec![],
+        authorities: vec![],
+        additional: vec![],
+    }
+    .serialize(&mut _buf)?;
+
+    let mut buf = BytesMut::new();
+    buf.put_u16(_buf.len().try_into().unwrap());
+    buf.put(_buf);
+
+    let mut stream = TcpStream::connect(source)?;
+
+    stream.write_all(&buf)?;
+
+    let mut size = [0; 2];
+    stream.read_exact(&mut size)?;
+
+    let size = u16::from_be_bytes(size) as usize;
+
+    let mut data = vec![0; size];
+    stream.read_exact(&mut data)?;
+
+    Ok(Message::parse(&mut BytesBuf::new(data))?)
+}
+
+fn resolve_domain(
+    id: u16,
+    request: Domain,
+    qtype: RecordType,
+    qclass: RecordClass,
+    source: SocketAddr,
+) -> Result<Option<Message>> {
+    let res = make_request(
+        Question {
+            name: request,
+            qtype,
+            qclass,
+        },
+        source,
+    )?;
+
+    if res.header.answer_records > 0 {}
+
+    Ok(None)
+}
 
 fn udp_server() -> Result<()> {
     let socket = UdpSocket::bind("127.0.0.1:8080")?;
@@ -50,8 +117,44 @@ fn tcp_server() -> Result<()> {
             continue;
         }
 
-        let msg = Message::parse(&mut BytesBuf::new(data))?;
+        let mut msg = Message::parse(&mut BytesBuf::new(data))?;
+        if msg.header.questions != 1 || !msg.header.should_recurse {
+            let mut buf = BytesMut::new();
+            Message {
+                header: Header {
+                    id: msg.header.id,
+                    is_response: true,
+                    opcode: types::OpCode::Query,
+                    is_authoritative: false,
+                    is_truncated: false,
+                    should_recurse: false,
+                    recursion_available: true,
+                    _z: 0,
+                    rescode: types::ResCode::Refused,
+                    questions: 0,
+                    answer_records: 0,
+                    authority_records: 0,
+                    additional_records: 0,
+                },
+                questions: vec![],
+                answers: vec![],
+                authorities: vec![],
+                additional: vec![],
+            }
+            .serialize(&mut buf)?;
+            stream.write_all(&buf)?;
+        }
         println!("{msg:#?}");
+
+        let q = msg.questions.remove(0);
+
+        resolve_domain(
+            msg.header.id,
+            q.name,
+            q.qtype,
+            q.qclass,
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53)),
+        )?;
     }
 
     Ok(())
@@ -60,7 +163,8 @@ fn tcp_server() -> Result<()> {
 fn main() -> Result<()> {
     let tcp = thread::spawn(|| tcp_server().unwrap());
 
-    thread::spawn(udp_server).join().unwrap()?;
+    // For now don't handle UDP
+    // thread::spawn(udp_server).join().unwrap()?;
     tcp.join().unwrap();
 
     Ok(())
