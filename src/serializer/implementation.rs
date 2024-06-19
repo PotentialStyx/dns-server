@@ -1,7 +1,7 @@
 use bytes::BufMut;
 use thiserror::Error;
 
-use super::{Domain, Serializable};
+use super::{Domain, Header, InfallibleSerializable, Serializable};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum SerializerError {
@@ -51,5 +51,51 @@ impl Serializable for Domain {
         buf.put_u8(0);
 
         Ok(())
+    }
+}
+
+impl InfallibleSerializable for Header {
+    fn serialize(&self, buf: &mut bytes::BytesMut)
+    where
+        Self: std::marker::Sized,
+    {
+        buf.reserve(12);
+
+        buf.put_u16(self.id);
+
+        // Many values are squeezed into this u16
+        let mut chunk: u16 = 0;
+
+        chunk |= Into::<u16>::into(self.rescode) & 0x0F;
+        chunk |= ((self._z & 0x07) as u16) << 4;
+
+        if self.recursion_available {
+            chunk |= 0x80;
+        }
+
+        if self.should_recurse {
+            chunk |= 0x0100;
+        }
+
+        if self.is_truncated {
+            chunk |= 0x0200;
+        }
+
+        if self.is_authoritative {
+            chunk |= 0x0400;
+        }
+
+        chunk |= (Into::<u16>::into(self.opcode) & 0x0F) << 11;
+
+        if self.is_response {
+            chunk |= 0x8000;
+        }
+
+        buf.put_u16(chunk);
+
+        buf.put_u16(self.questions);
+        buf.put_u16(self.answer_records);
+        buf.put_u16(self.authority_records);
+        buf.put_u16(self.additional_records);
     }
 }

@@ -139,13 +139,13 @@ impl Parsable for Header {
         let chunk = buf.in_use.get_u16();
 
         let is_response = chunk >> 15 == 1;
-        let opcode: OpCode = ((chunk >> 11) & 0xf).into();
+        let opcode: OpCode = ((chunk >> 11) & 0x0F).into();
         let is_authoritative = (chunk >> 10) & 0b1 == 1;
         let is_truncated = (chunk >> 9) & 0b1 == 1;
         let should_recurse = (chunk >> 8) & 0b1 == 1;
         let recursion_available = (chunk >> 7) & 0b1 == 1;
         let _z = ((chunk >> 4) & 0b111) as u8;
-        let rescode: ResCode = (chunk & 0xF).into();
+        let rescode: ResCode = (chunk & 0x0F).into();
 
         let question_count: u16 = buf.in_use.get_u16();
         let answer_record_count: u16 = buf.in_use.get_u16();
