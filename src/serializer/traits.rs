@@ -11,7 +11,7 @@ pub trait Serializable {
 
 pub trait InfallibleSerializable {
     /// Serializes type into `data`
-    fn serialize(&self, buf: &mut BytesMut)
+    fn serialize_infallible(&self, buf: &mut BytesMut)
     where
         Self: std::marker::Sized;
 }
@@ -23,7 +23,7 @@ impl<T: InfallibleSerializable> Serializable for T {
     where
         Self: std::marker::Sized,
     {
-        self.serialize(buf);
+        self.serialize_infallible(buf);
         Ok(())
     }
 }

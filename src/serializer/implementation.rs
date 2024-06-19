@@ -1,7 +1,9 @@
 use bytes::BufMut;
 use thiserror::Error;
 
-use super::{Domain, Header, InfallibleSerializable, Serializable};
+use super::{
+    Domain, Header, InfallibleSerializable, Message, Question, ResourceRecord, Serializable,
+};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum SerializerError {
@@ -9,6 +11,13 @@ pub enum SerializerError {
     InvalidAscii(String),
     #[error("Too many bytes, expected maximum of {expected_max:?} bytes, got {recieved:?}")]
     TooManyBytes {
+        expected_max: usize,
+        recieved: usize,
+    },
+    #[error(
+        "Too many bytes, expected maximum of {expected_max:?} questions/records, got {recieved:?}"
+    )]
+    TooManyRecords {
         expected_max: usize,
         recieved: usize,
     },
@@ -55,7 +64,7 @@ impl Serializable for Domain {
 }
 
 impl InfallibleSerializable for Header {
-    fn serialize(&self, buf: &mut bytes::BytesMut)
+    fn serialize_infallible(&self, buf: &mut bytes::BytesMut)
     where
         Self: std::marker::Sized,
     {
@@ -97,5 +106,124 @@ impl InfallibleSerializable for Header {
         buf.put_u16(self.answer_records);
         buf.put_u16(self.authority_records);
         buf.put_u16(self.additional_records);
+    }
+}
+
+impl Serializable for Question {
+    type Error = SerializerError;
+
+    fn serialize(&self, buf: &mut bytes::BytesMut) -> Result<(), Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        self.name.serialize(buf)?;
+
+        buf.reserve(4);
+        buf.put_u16(self.qtype.into());
+        buf.put_u16(self.qclass.into());
+
+        Ok(())
+    }
+}
+
+impl Serializable for ResourceRecord {
+    type Error = SerializerError;
+
+    fn serialize(&self, buf: &mut bytes::BytesMut) -> Result<(), Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        self.name.serialize(buf)?;
+
+        buf.put_u16(self.rtype.into());
+        buf.put_u16(self.rclass.into());
+
+        buf.put_u32(self.ttl);
+
+        let len_usize = self.data.len();
+        let len: u16 = match len_usize.try_into() {
+            Ok(len) => len,
+            Err(_) => {
+                return Err(SerializerError::TooManyBytes {
+                    // Should be safe since I'm not targeting 8-bit targets
+                    expected_max: u16::MAX as usize,
+                    recieved: len_usize,
+                });
+            }
+        };
+
+        buf.reserve(2 + len_usize);
+
+        buf.put_u16(len);
+        buf.put(self.data.clone());
+
+        Ok(())
+    }
+}
+
+impl Serializable for Message {
+    type Error = SerializerError;
+
+    fn serialize(&self, buf: &mut bytes::BytesMut) -> Result<(), Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        let mut header = self.header;
+
+        header.questions =
+            self.questions
+                .len()
+                .try_into()
+                .map_err(|_| SerializerError::TooManyRecords {
+                    expected_max: u16::MAX as usize,
+                    recieved: self.questions.len(),
+                })?;
+
+        header.answer_records =
+            self.answers
+                .len()
+                .try_into()
+                .map_err(|_| SerializerError::TooManyRecords {
+                    expected_max: u16::MAX as usize,
+                    recieved: self.answers.len(),
+                })?;
+
+        header.authority_records =
+            self.authorities
+                .len()
+                .try_into()
+                .map_err(|_| SerializerError::TooManyRecords {
+                    expected_max: u16::MAX as usize,
+                    recieved: self.authorities.len(),
+                })?;
+
+        header.additional_records =
+            self.additional
+                .len()
+                .try_into()
+                .map_err(|_| SerializerError::TooManyRecords {
+                    expected_max: u16::MAX as usize,
+                    recieved: self.additional.len(),
+                })?;
+
+        header.serialize_infallible(buf);
+
+        for question in &self.questions {
+            question.serialize(buf)?;
+        }
+
+        for answer in &self.answers {
+            answer.serialize(buf)?;
+        }
+
+        for authority in &self.authorities {
+            authority.serialize(buf)?;
+        }
+
+        for additional in &self.additional {
+            additional.serialize(buf)?;
+        }
+
+        Ok(())
     }
 }

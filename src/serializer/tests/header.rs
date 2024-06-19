@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 
-use super::super::{Header, InfallibleSerializable, OpCode, ResCode};
+use super::super::*;
 
 #[test]
 fn correct_id() {
@@ -20,7 +20,7 @@ fn correct_id() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x13, 0x37, // ID: 0x1337
@@ -52,7 +52,7 @@ fn correct_is_response() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -83,7 +83,7 @@ fn correct_opcode() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -114,7 +114,7 @@ fn correct_is_authoritative() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -145,7 +145,7 @@ fn correct_is_truncated() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -177,7 +177,7 @@ fn correct_should_recurse() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -209,7 +209,7 @@ fn correct_recursion_available() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -241,7 +241,7 @@ fn correct_z() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -273,7 +273,7 @@ fn correct_rescode() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -305,7 +305,7 @@ fn correct_questions() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -337,7 +337,7 @@ fn correct_answers() {
         authority_records: 0,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -368,7 +368,7 @@ fn correct_authorities() {
         authority_records: 0x1337,
         additional_records: 0,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
@@ -399,7 +399,7 @@ fn correct_additional() {
         authority_records: 0,
         additional_records: 0x1337,
     }
-    .serialize(&mut buf);
+    .serialize_infallible(&mut buf);
 
     let result_buf: &[u8] = &[
         0x00, 0x00, // ID: 0
