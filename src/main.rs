@@ -1,9 +1,10 @@
 use std::{io, net::UdpSocket};
 
-use parser::{BytesBuf, Message, Parsable};
+use parser::{BytesBuf, Parsable};
+use types::Message;
 
 mod parser;
-
+mod types;
 fn main() -> io::Result<()> {
     {
         let socket = UdpSocket::bind("127.0.0.1:8080")?;

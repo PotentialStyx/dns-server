@@ -1,12 +1,10 @@
-mod enums;
-mod parsers;
-mod structs;
+mod implementation;
 mod traits;
 
 #[cfg(test)]
 mod tests;
 
-pub use enums::*;
-pub use parsers::*;
-pub use structs::*;
+pub use implementation::*;
 pub use traits::*;
+
+use super::types::*;
