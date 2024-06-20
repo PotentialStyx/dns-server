@@ -80,6 +80,7 @@ useful_enum! {
         MINFO = 14, // mailbox or mail list information
         MX = 15,    // mail exchange
         TXT = 16,   // text strings
+        AAAA = 28, // ipv6
 
         // QTYPE
         AXFR = 252,  // A request for a transfer of an entire zone
