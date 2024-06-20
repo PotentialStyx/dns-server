@@ -5,6 +5,7 @@ use std::{
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket},
     thread,
+    time::Duration,
 };
 
 use parser::{BytesBuf, Parsable};
@@ -243,66 +244,73 @@ fn udp_server() -> Result<()> {
     }
 }
 
+fn stream_handler(mut stream: TcpStream) -> Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
+    // These 2 pesky bytes only mentioned once in RFC 1035
+    let mut size = [0; 2];
+    stream.read_exact(&mut size)?;
+
+    let size = u16::from_be_bytes(size) as usize;
+
+    let mut data = vec![0; size];
+    stream.read_exact(&mut data)?;
+
+    // if data.is_empty() {
+    //     continue;
+    // }
+
+    let mut msg = Message::parse(&mut BytesBuf::new(data))?;
+
+    if msg.header.questions != 1 || !msg.header.should_recurse {
+        let mut buf = BytesMut::new();
+        Message {
+            header: Header {
+                id: msg.header.id,
+                is_response: true,
+                opcode: types::OpCode::Query,
+                is_authoritative: false,
+                is_truncated: false,
+                should_recurse: false,
+                recursion_available: true,
+                _z: 0,
+                rescode: types::ResCode::Refused,
+                questions: 0,
+                answer_records: 0,
+                authority_records: 0,
+                additional_records: 0,
+            },
+            questions: vec![],
+            answers: vec![],
+            authorities: vec![],
+            additional: vec![],
+        }
+        .serialize(&mut buf)?;
+        stream.write_all(&buf)?;
+    }
+
+    let q = msg.questions.remove(0);
+    println!("New TCP lookup for: {}", q.name);
+
+    let res = resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE);
+    let mut buf = BytesMut::new();
+    res.serialize(&mut buf)?;
+
+    stream.write_all(&u16::to_be_bytes(buf.len() as u16))?;
+
+    stream.write_all(&buf)?;
+
+    Ok(())
+}
+
 fn tcp_server() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8080")?;
 
     for stream in listener.incoming() {
-        let mut stream = stream?;
+        let stream = stream?;
 
-        // These 2 pesky bytes only mentioned once in RFC 1035
-        let mut size = [0; 2];
-        stream.read_exact(&mut size)?;
-
-        let size = u16::from_be_bytes(size) as usize;
-
-        let mut data = vec![0; size];
-        stream.read_exact(&mut data)?;
-
-        // if data.is_empty() {
-        //     continue;
-        // }
-
-        let mut msg = Message::parse(&mut BytesBuf::new(data))?;
-
-        if msg.header.questions != 1 || !msg.header.should_recurse {
-            let mut buf = BytesMut::new();
-            Message {
-                header: Header {
-                    id: msg.header.id,
-                    is_response: true,
-                    opcode: types::OpCode::Query,
-                    is_authoritative: false,
-                    is_truncated: false,
-                    should_recurse: false,
-                    recursion_available: true,
-                    _z: 0,
-                    rescode: types::ResCode::Refused,
-                    questions: 0,
-                    answer_records: 0,
-                    authority_records: 0,
-                    additional_records: 0,
-                },
-                questions: vec![],
-                answers: vec![],
-                authorities: vec![],
-                additional: vec![],
-            }
-            .serialize(&mut buf)?;
-            stream.write_all(&buf)?;
-
-            continue;
-        }
-
-        let q = msg.questions.remove(0);
-        println!("New TCP lookup for: {}", q.name);
-
-        let res = resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE);
-        let mut buf = BytesMut::new();
-        res.serialize(&mut buf)?;
-
-        stream.write_all(&u16::to_be_bytes(buf.len() as u16))?;
-
-        stream.write_all(&buf)?;
+        thread::spawn(move || {
+            stream_handler(stream).expect("TODO: deal with this");
+        });
     }
 
     Ok(())
