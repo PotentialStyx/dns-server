@@ -5,7 +5,7 @@ use bytes::Bytes;
 use super::{OpCode, RecordClass, RecordType, ResCode};
 
 /// DNS Domain
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct Domain(pub Vec<String>);
 
 /// TODO: add tests for this maybe(?)
@@ -65,7 +65,7 @@ pub struct Question {
 }
 
 /// One singular Resource Record
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ResourceRecord {
     /// Domain this record refers to
     pub name: Domain,
