@@ -75,45 +75,46 @@ fn resolve_domain(
     qtype: RecordType,
     qclass: RecordClass,
     source: SocketAddr,
-) -> Message {
-    let res = match make_request(
+) -> Result<Option<Message>> {
+    let res = make_request(
         Question {
             name: request.clone(),
             qtype,
             qclass,
         },
         source,
-    ) {
-        Ok(res) => res,
-        Err(err) => {
-            eprintln!("Error when making request, propogating to client: {err}");
+    )?;
+    //  {
+    //     Ok(res) => res,
+    //     Err(err) => {
+    //         eprintln!("Error when making request, propogating to client: {err}");
 
-            return Message {
-                header: Header {
-                    id,
-                    is_response: true,
-                    opcode: OpCode::Query,
-                    is_authoritative: false,
-                    is_truncated: false,
-                    should_recurse: false,
-                    recursion_available: true,
-                    _z: 0,
-                    rescode: ResCode::ServerFailure,
-                    questions: 0,
-                    answer_records: 0,
-                    authority_records: 0,
-                    additional_records: 0,
-                },
-                questions: vec![],
-                answers: vec![],
-                authorities: vec![],
-                additional: vec![],
-            };
-        }
-    };
+    //         return Message {
+    //             header: Header {
+    //                 id,
+    //                 is_response: true,
+    //                 opcode: OpCode::Query,
+    //                 is_authoritative: false,
+    //                 is_truncated: false,
+    //                 should_recurse: false,
+    //                 recursion_available: true,
+    //                 _z: 0,
+    //                 rescode: ResCode::ServerFailure,
+    //                 questions: 0,
+    //                 answer_records: 0,
+    //                 authority_records: 0,
+    //                 additional_records: 0,
+    //             },
+    //             questions: vec![],
+    //             answers: vec![],
+    //             authorities: vec![],
+    //             additional: vec![],
+    //         };
+    //     }
+    // };
 
     if res.header.answer_records > 0 {
-        return Message {
+        return Ok(Some(Message {
             header: Header {
                 id,
                 is_response: true,
@@ -133,7 +134,7 @@ fn resolve_domain(
             answers: res.answers,
             authorities: vec![],
             additional: vec![],
-        };
+        }));
     }
 
     if res.header.authority_records > 0 && res.header.additional_records > 0 {
@@ -153,8 +154,9 @@ fn resolve_domain(
             }
         }
 
-        // TODO: dont use assert!()
-        assert!(!authority_sources.is_empty());
+        if authority_sources.is_empty() {
+            return Ok(None);
+        }
 
         // TODO: maybe backtrack and try a different authority if one returns NXDOMAIN
         return resolve_domain(
@@ -166,31 +168,17 @@ fn resolve_domain(
         );
     }
 
-    Message {
-        header: Header {
-            id,
-            is_response: true,
-            opcode: OpCode::Query,
-            is_authoritative: false,
-            is_truncated: false,
-            should_recurse: false,
-            recursion_available: true,
-            _z: 0,
-            rescode: ResCode::NameError,
-            questions: 0,
-            answer_records: 0,
-            authority_records: 0,
-            additional_records: 0,
-        },
-        questions: vec![],
-        answers: vec![],
-        authorities: vec![],
-        additional: vec![],
-    }
+    Ok(None)
 }
 
-fn recursive_resolve(transport: &'static str, mut data: BytesBuf) -> Result<Message> {
-    let mut msg = Message::parse(&mut data)?;
+fn _recursive_resolve(
+    transport: &'static str,
+    mut data: BytesBuf,
+) -> std::result::Result<Message, (Option<u16>, anyhow::Error)> {
+    let mut msg = match Message::parse(&mut data) {
+        Ok(msg) => msg,
+        Err(err) => return Err((None, err.into())),
+    };
 
     if msg.header.questions != 1 || !msg.header.should_recurse {
         return Ok(Message {
@@ -219,13 +207,71 @@ fn recursive_resolve(transport: &'static str, mut data: BytesBuf) -> Result<Mess
     let q = msg.questions.remove(0);
     println!("New {transport} lookup for: {}", q.name);
 
-    Ok(resolve_domain(
-        msg.header.id,
-        q.name,
-        q.qtype,
-        q.qclass,
-        ROOT_SOURCE,
-    ))
+    match resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE) {
+        Ok(res) => match res {
+            Some(msg) => Ok(msg),
+            None => Ok(Message {
+                header: Header {
+                    id: msg.header.id,
+                    is_response: true,
+                    opcode: OpCode::Query,
+                    is_authoritative: false,
+                    is_truncated: false,
+                    should_recurse: false,
+                    recursion_available: true,
+                    _z: 0,
+                    rescode: ResCode::NameError,
+                    questions: 0,
+                    answer_records: 0,
+                    authority_records: 0,
+                    additional_records: 0,
+                },
+                questions: vec![],
+                answers: vec![],
+                authorities: vec![],
+                additional: vec![],
+            }),
+        },
+        Err(err) => Err((Some(msg.header.id), err)),
+    }
+}
+
+fn recursive_resolve(transport: &'static str, data: BytesBuf) -> Option<Message> {
+    match _recursive_resolve(transport, data) {
+        Ok(msg) => Some(msg),
+        Err((id, err)) => {
+            eprintln!("Error when making request, propogating to client: {err}");
+
+            if let Some(id) = id {
+                Some(Message {
+                    header: Header {
+                        id,
+                        is_response: true,
+                        opcode: OpCode::Query,
+                        is_authoritative: false,
+                        is_truncated: false,
+                        should_recurse: false,
+                        recursion_available: true,
+                        _z: 0,
+                        rescode: ResCode::ServerFailure,
+                        questions: 0,
+                        answer_records: 0,
+                        authority_records: 0,
+                        additional_records: 0,
+                    },
+                    questions: vec![],
+                    answers: vec![],
+                    authorities: vec![],
+                    additional: vec![],
+                })
+            } else {
+                eprintln!(
+                    "Couldn't even parse message id from data, so can't send client the error :/"
+                );
+                None
+            }
+        }
+    }
 }
 
 fn udp_server() -> Result<()> {
@@ -244,9 +290,11 @@ fn udp_server() -> Result<()> {
 
         let mut buf = BytesMut::new();
 
-        recursive_resolve("UDP", BytesBuf::new(data.into()))?.serialize(&mut buf)?;
+        if let Some(msg) = recursive_resolve("UDP", BytesBuf::new(data.into())) {
+            msg.serialize(&mut buf)?;
 
-        socket.send_to(&buf, addr)?;
+            socket.send_to(&buf, addr)?;
+        }
     }
 }
 
@@ -262,11 +310,14 @@ fn stream_handler(mut stream: TcpStream) -> Result<()> {
     stream.read_exact(&mut data)?;
 
     let mut buf = BytesMut::new();
-    recursive_resolve("TCP", BytesBuf::new(data))?.serialize(&mut buf)?;
 
-    stream.write_all(&u16::to_be_bytes(buf.len() as u16))?;
+    if let Some(msg) = recursive_resolve("TCP", BytesBuf::new(data)) {
+        msg.serialize(&mut buf)?;
 
-    stream.write_all(&buf)?;
+        stream.write_all(&u16::to_be_bytes(buf.len() as u16))?;
+
+        stream.write_all(&buf)?;
+    }
 
     Ok(())
 }
