@@ -3,7 +3,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use serializer::Serializable;
 use std::{
     io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket},
     thread,
 };
 
@@ -17,7 +17,7 @@ mod types;
 static ROOT_SOURCE: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53));
 
-fn make_request(question: Question, source: SocketAddr) -> Result<(Bytes, Message)> {
+fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
     let mut _buf = BytesMut::new();
     Message {
         header: Header {
@@ -43,7 +43,7 @@ fn make_request(question: Question, source: SocketAddr) -> Result<(Bytes, Messag
     .serialize(&mut _buf)?;
 
     let mut buf = BytesMut::new();
-    buf.put_u16(_buf.len().try_into().unwrap());
+    buf.put_u16(_buf.len().try_into()?);
     buf.put(_buf);
 
     let mut stream = TcpStream::connect(source)?;
@@ -58,9 +58,11 @@ fn make_request(question: Question, source: SocketAddr) -> Result<(Bytes, Messag
     let mut data = vec![0; size];
     stream.read_exact(&mut data)?;
 
+    stream.shutdown(std::net::Shutdown::Both)?;
+
     let buf: Bytes = data.into();
 
-    Ok((buf.clone(), Message::parse(&mut BytesBuf::from_bytes(buf))?))
+    Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
 }
 
 fn resolve_domain(
@@ -69,18 +71,47 @@ fn resolve_domain(
     qtype: RecordType,
     qclass: RecordClass,
     source: SocketAddr,
-) -> Result<Option<Message>> {
-    let (data, res) = make_request(
+) -> Message {
+    let res = match make_request(
         Question {
             name: request.clone(),
             qtype,
             qclass,
         },
         source,
-    )?;
+    ) {
+        Ok(res) => res,
+        Err(err) => {
+            eprintln!("Error when making request, propogating to client: {err}");
+
+            return Message {
+                header: Header {
+                    id,
+                    is_response: true,
+                    opcode: OpCode::Query,
+                    is_authoritative: false,
+                    is_truncated: false,
+                    should_recurse: false,
+                    recursion_available: true,
+                    _z: 0,
+                    rescode: ResCode::ServerFailure,
+                    questions: 0,
+                    answer_records: 0,
+                    authority_records: 0,
+                    additional_records: 0,
+                },
+                questions: vec![],
+                answers: vec![],
+                authorities: vec![],
+                additional: vec![],
+            };
+        }
+    };
+
+    dbg!(&res);
 
     if res.header.answer_records > 0 {
-        return Ok(Some(Message {
+        return Message {
             header: Header {
                 id,
                 is_response: true,
@@ -100,7 +131,7 @@ fn resolve_domain(
             answers: res.answers,
             authorities: vec![],
             additional: vec![],
-        }));
+        };
     }
 
     if res.header.authority_records > 0 && res.header.additional_records > 0 {
@@ -122,6 +153,7 @@ fn resolve_domain(
         }
 
         assert!(!authority_sources.is_empty());
+        dbg!(&authority_sources);
 
         return resolve_domain(
             id,
@@ -132,7 +164,7 @@ fn resolve_domain(
         );
     }
 
-    Ok(Some(Message {
+    Message {
         header: Header {
             id,
             is_response: true,
@@ -144,7 +176,7 @@ fn resolve_domain(
             _z: 0,
             rescode: ResCode::NameError,
             questions: 0,
-            answer_records: res.header.answer_records,
+            answer_records: 0,
             authority_records: 0,
             additional_records: 0,
         },
@@ -152,7 +184,7 @@ fn resolve_domain(
         answers: vec![],
         authorities: vec![],
         additional: vec![],
-    }))
+    }
 }
 
 fn udp_server() -> Result<()> {
@@ -224,7 +256,13 @@ fn tcp_server() -> Result<()> {
 
         let q = msg.questions.remove(0);
 
-        resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE)?;
+        let res = resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE);
+        let mut buf = BytesMut::new();
+        res.serialize(&mut buf)?;
+
+        stream.write_all(&u16::to_be_bytes(buf.len() as u16))?;
+
+        stream.write_all(&buf)?;
     }
 
     Ok(())
