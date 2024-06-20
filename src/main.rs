@@ -65,6 +65,9 @@ fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
     Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
 }
 
+// TODO: move error message and NXDOMAIN logic out of this func
+// by returning Result<Option<Message>> and having an outer func
+// that turns that into a Message
 fn resolve_domain(
     id: u16,
     request: Domain,
@@ -108,8 +111,6 @@ fn resolve_domain(
         }
     };
 
-    dbg!(&res);
-
     if res.header.answer_records > 0 {
         return Message {
             header: Header {
@@ -135,7 +136,6 @@ fn resolve_domain(
     }
 
     if res.header.authority_records > 0 && res.header.additional_records > 0 {
-        // dbg!(&res);
         let mut authority_sources = vec![];
         for authority in &res.authorities {
             if let Some(domain) = &authority.domain_data {
@@ -152,9 +152,10 @@ fn resolve_domain(
             }
         }
 
+        // TODO: dont use assert!()
         assert!(!authority_sources.is_empty());
-        dbg!(&authority_sources);
 
+        // TODO: maybe backtrack and try a different authority if one returns NXDOMAIN
         return resolve_domain(
             id,
             request,
@@ -195,14 +196,50 @@ fn udp_server() -> Result<()> {
         // "The maximum allowable size of a DNS message over UDP not using the extensions described in this document is 512 bytes."
         let mut buf = [0; 512];
 
-        let _ = socket.recv_from(&mut buf)?;
+        let (_, addr) = socket.recv_from(&mut buf)?;
 
         if buf.is_empty() {
             continue;
         }
 
-        let msg = Message::parse(&mut BytesBuf::new(buf.into()))?;
-        println!("{msg:#?}");
+        let mut msg = Message::parse(&mut BytesBuf::new(buf.into()))?;
+        if msg.header.questions != 1 || !msg.header.should_recurse {
+            let mut buf = BytesMut::new();
+            Message {
+                header: Header {
+                    id: msg.header.id,
+                    is_response: true,
+                    opcode: types::OpCode::Query,
+                    is_authoritative: false,
+                    is_truncated: false,
+                    should_recurse: false,
+                    recursion_available: true,
+                    _z: 0,
+                    rescode: types::ResCode::Refused,
+                    questions: 0,
+                    answer_records: 0,
+                    authority_records: 0,
+                    additional_records: 0,
+                },
+                questions: vec![],
+                answers: vec![],
+                authorities: vec![],
+                additional: vec![],
+            }
+            .serialize(&mut buf)?;
+            socket.send_to(&buf, addr)?;
+
+            continue;
+        }
+
+        let q = msg.questions.remove(0);
+        println!("New UDP lookup for: {}", q.name);
+
+        let res = resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE);
+        let mut buf = BytesMut::new();
+        res.serialize(&mut buf)?;
+
+        socket.send_to(&buf, addr)?;
     }
 }
 
@@ -221,11 +258,12 @@ fn tcp_server() -> Result<()> {
         let mut data = vec![0; size];
         stream.read_exact(&mut data)?;
 
-        if data.is_empty() {
-            continue;
-        }
+        // if data.is_empty() {
+        //     continue;
+        // }
 
         let mut msg = Message::parse(&mut BytesBuf::new(data))?;
+
         if msg.header.questions != 1 || !msg.header.should_recurse {
             let mut buf = BytesMut::new();
             Message {
@@ -251,10 +289,12 @@ fn tcp_server() -> Result<()> {
             }
             .serialize(&mut buf)?;
             stream.write_all(&buf)?;
+
+            continue;
         }
-        println!("{msg:#?}");
 
         let q = msg.questions.remove(0);
+        println!("New TCP lookup for: {}", q.name);
 
         let res = resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE);
         let mut buf = BytesMut::new();
@@ -272,7 +312,7 @@ fn main() -> Result<()> {
     let tcp = thread::spawn(|| tcp_server().unwrap());
 
     // For now don't handle UDP
-    // thread::spawn(udp_server).join().unwrap()?;
+    thread::spawn(udp_server).join().unwrap()?;
     tcp.join().unwrap();
 
     Ok(())

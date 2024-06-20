@@ -230,10 +230,7 @@ impl Parsable for ResourceRecord {
 
         let domain_data = match rtype {
             // TODO: add tests for this
-            RecordType::NS | RecordType::CNAME => {
-                println!("uhoh");
-                Some(Domain::parse(buf)?)
-            }
+            RecordType::NS | RecordType::CNAME => Some(Domain::parse(buf)?),
             _ => {
                 buf.in_use.advance(data_len);
 
