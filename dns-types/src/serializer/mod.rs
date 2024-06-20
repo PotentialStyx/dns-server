@@ -3,8 +3,7 @@ mod traits;
 
 #[cfg(test)]
 mod tests;
-
+#[cfg(test)]
 pub use implementation::*;
-pub use traits::*;
 
-use super::types::*;
+pub use traits::*;

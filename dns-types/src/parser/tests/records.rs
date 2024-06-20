@@ -1,6 +1,7 @@
 use bytes::Bytes;
 
-use super::super::*;
+use crate::*;
+use parser::*;
 
 #[test]
 fn no_data() {

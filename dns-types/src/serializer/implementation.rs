@@ -1,9 +1,8 @@
 use bytes::BufMut;
 use thiserror::Error;
 
-use super::{
-    Domain, Header, InfallibleSerializable, Message, Question, ResourceRecord, Serializable,
-};
+use crate::serializer::{InfallibleSerializable, Serializable};
+use crate::{Domain, Header, Message, Question, ResourceRecord};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum SerializerError {

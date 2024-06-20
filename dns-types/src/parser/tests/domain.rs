@@ -1,4 +1,5 @@
-use super::super::*;
+use crate::*;
+use parser::*;
 
 #[test]
 fn display_single_part() {

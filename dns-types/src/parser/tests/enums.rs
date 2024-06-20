@@ -1,4 +1,4 @@
-use super::super::*;
+use crate::*;
 
 #[test]
 fn convert_enum_macro_recordclass() {

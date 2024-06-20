@@ -1,7 +1,8 @@
 use std::fs;
 
-use super::super::*;
+use crate::*;
 use bytes::{Bytes, BytesMut};
+use serializer::*;
 
 #[test]
 fn test_encode() {

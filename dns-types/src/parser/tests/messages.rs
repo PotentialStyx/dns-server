@@ -1,6 +1,7 @@
 use bytes::Bytes;
 
-use super::super::*;
+use crate::*;
+use parser::*;
 
 fn get_shared_test_case_data() -> Message {
     Message{

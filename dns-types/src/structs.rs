@@ -39,7 +39,7 @@ pub struct Header {
     /// Does the server support recursion
     pub recursion_available: bool,
     /// Should be zeros, but in the past my implementations haven't worked unless I tracked this
-    pub(crate) _z: u8,
+    pub _z: u8,
     /// Result code from request
     pub rescode: ResCode,
 

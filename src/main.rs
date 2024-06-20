@@ -3,7 +3,6 @@
 
 use anyhow::{format_err, Result};
 use bytes::{BufMut, Bytes, BytesMut};
-use serializer::Serializable;
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
@@ -13,14 +12,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use parser::{BytesBuf, Parsable};
 use types::{
+    parser::{BytesBuf, Parsable},
+    serializer::Serializable,
     Domain, Header, Message, OpCode, Question, RecordClass, RecordType, ResCode, ResourceRecord,
 };
-
-mod parser;
-mod serializer;
-mod types;
 
 static ROOT_SOURCE: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53));

@@ -1,3 +1,6 @@
+pub mod parser;
+pub mod serializer;
+
 mod enums;
 mod structs;
 

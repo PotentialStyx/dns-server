@@ -1,6 +1,7 @@
 use bytes::{Bytes, BytesMut};
 
-use super::super::*;
+use crate::*;
+use serializer::*;
 
 #[test]
 fn correct_record_data() {

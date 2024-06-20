@@ -6,5 +6,3 @@ mod tests;
 
 pub use implementation::*;
 pub use traits::*;
-
-use super::types::*;

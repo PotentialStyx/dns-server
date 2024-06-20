@@ -1,6 +1,7 @@
 use bytes::BytesMut;
 
-use super::super::*;
+use crate::*;
+use serializer::*;
 
 #[test]
 fn non_ascii_error() {

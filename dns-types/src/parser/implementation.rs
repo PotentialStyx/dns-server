@@ -3,9 +3,10 @@ use core::str::Utf8Error;
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
-use crate::parser::{OpCode, RecordClass, RecordType, ResCode};
+use crate::{OpCode, RecordClass, RecordType, ResCode};
 
-use super::{Domain, Header, Message, Parsable, Question, ResourceRecord};
+use crate::parser::Parsable;
+use crate::{Domain, Header, Message, Question, ResourceRecord};
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParserError {
@@ -27,13 +28,13 @@ pub enum AsciiError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BytesBuf {
+pub struct BytesBuf {
     original: Bytes,
     pub(crate) in_use: Bytes,
 }
 
 impl BytesBuf {
-    pub(crate) fn new(data: Vec<u8>) -> BytesBuf {
+    pub fn new(data: Vec<u8>) -> BytesBuf {
         let data: Bytes = data.into();
         BytesBuf {
             original: data.clone(),
@@ -41,7 +42,7 @@ impl BytesBuf {
         }
     }
 
-    pub(crate) fn from_bytes(data: Bytes) -> BytesBuf {
+    pub fn from_bytes(data: Bytes) -> BytesBuf {
         BytesBuf {
             original: data.clone(),
             in_use: data,
@@ -49,7 +50,7 @@ impl BytesBuf {
     }
 
     /// Get a copy of the original `Bytes` object at ptr=0
-    pub(crate) fn get_original(&self) -> Bytes {
+    pub fn get_original(&self) -> Bytes {
         self.original.clone()
     }
 }
