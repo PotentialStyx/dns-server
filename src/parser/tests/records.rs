@@ -76,7 +76,8 @@ fn no_record_data() {
             rtype: RecordType::Unknown(0),
             rclass: RecordClass::Unknown(0),
             ttl: 0,
-            data: Bytes::new()
+            data: Bytes::new(),
+            domain_data: None
         })
     );
 }
@@ -101,7 +102,8 @@ fn correct_record_data() {
             rtype: RecordType::Unknown(0),
             rclass: RecordClass::Unknown(0),
             ttl: 0,
-            data: Bytes::from_static(&[0x13, 0x37, 0x13, 0x37])
+            data: Bytes::from_static(&[0x13, 0x37, 0x13, 0x37]),
+            domain_data: None
         })
     );
 }
@@ -131,7 +133,8 @@ fn correct_total_decoding() {
             rtype: RecordType::A,
             rclass: RecordClass::IN,
             ttl: 0xDEADBEEF,
-            data: Bytes::from_static(&[0xBA, 0xAA, 0xAA, 0xAD])
+            data: Bytes::from_static(&[0xBA, 0xAA, 0xAA, 0xAD]),
+            domain_data: None
         })
     );
 }

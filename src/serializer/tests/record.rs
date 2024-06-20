@@ -11,7 +11,8 @@ fn correct_record_data() {
             rtype: RecordType::Unknown(0),
             rclass: RecordClass::Unknown(0),
             ttl: 0,
-            data: Bytes::from_static(&[0x13, 0x37, 0x13, 0x37])
+            data: Bytes::from_static(&[0x13, 0x37, 0x13, 0x37]),
+            domain_data: None,
         }
         .serialize(&mut buf),
         Ok(())
@@ -40,7 +41,8 @@ fn correct_total_encoding() {
             rtype: RecordType::A,
             rclass: RecordClass::IN,
             ttl: 0xDEADBEEF,
-            data: Bytes::from_static(&[0xBA, 0xAA, 0xAA, 0xAD])
+            data: Bytes::from_static(&[0xBA, 0xAA, 0xAA, 0xAD]),
+            domain_data: None,
         }
         .serialize(&mut buf),
         Ok(())
@@ -74,7 +76,8 @@ fn buf_too_long_error() {
             rtype: RecordType::A,
             rclass: RecordClass::IN,
             ttl: 0xDEADBEEF,
-            data: Bytes::from_static(&[0x00; (u16::MAX as usize) + 1])
+            data: Bytes::from_static(&[0x00; (u16::MAX as usize) + 1]),
+            domain_data: None
         }
         .serialize(&mut buf),
         Err(SerializerError::TooManyBytes {

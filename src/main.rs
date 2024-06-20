@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use serializer::Serializable;
 use std::{
     io::{Read, Write},
@@ -14,7 +14,10 @@ mod parser;
 mod serializer;
 mod types;
 
-fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
+static ROOT_SOURCE: SocketAddr =
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53));
+
+fn make_request(question: Question, source: SocketAddr) -> Result<(Bytes, Message)> {
     let mut _buf = BytesMut::new();
     Message {
         header: Header {
@@ -55,7 +58,9 @@ fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
     let mut data = vec![0; size];
     stream.read_exact(&mut data)?;
 
-    Ok(Message::parse(&mut BytesBuf::new(data))?)
+    let buf: Bytes = data.into();
+
+    Ok((buf.clone(), Message::parse(&mut BytesBuf::from_bytes(buf))?))
 }
 
 fn resolve_domain(
@@ -65,18 +70,89 @@ fn resolve_domain(
     qclass: RecordClass,
     source: SocketAddr,
 ) -> Result<Option<Message>> {
-    let res = make_request(
+    let (data, res) = make_request(
         Question {
-            name: request,
+            name: request.clone(),
             qtype,
             qclass,
         },
         source,
     )?;
 
-    if res.header.answer_records > 0 {}
+    if res.header.answer_records > 0 {
+        return Ok(Some(Message {
+            header: Header {
+                id,
+                is_response: true,
+                opcode: OpCode::Query,
+                is_authoritative: false,
+                is_truncated: false,
+                should_recurse: false,
+                recursion_available: true,
+                _z: 0,
+                rescode: ResCode::NoError,
+                questions: 0,
+                answer_records: res.header.answer_records,
+                authority_records: 0,
+                additional_records: 0,
+            },
+            questions: vec![],
+            answers: res.answers,
+            authorities: vec![],
+            additional: vec![],
+        }));
+    }
 
-    Ok(None)
+    if res.header.authority_records > 0 && res.header.additional_records > 0 {
+        // dbg!(&res);
+        let mut authority_sources = vec![];
+        for authority in &res.authorities {
+            if let Some(domain) = &authority.domain_data {
+                for additional in &res.additional {
+                    if additional.name == *domain && additional.rtype == RecordType::A {
+                        authority_sources.push(Ipv4Addr::new(
+                            additional.data[0],
+                            additional.data[1],
+                            additional.data[2],
+                            additional.data[3],
+                        ));
+                    }
+                }
+            }
+        }
+
+        assert!(!authority_sources.is_empty());
+
+        return resolve_domain(
+            id,
+            request,
+            qtype,
+            qclass,
+            SocketAddr::V4(SocketAddrV4::new(authority_sources[0], 53)),
+        );
+    }
+
+    Ok(Some(Message {
+        header: Header {
+            id,
+            is_response: true,
+            opcode: OpCode::Query,
+            is_authoritative: false,
+            is_truncated: false,
+            should_recurse: false,
+            recursion_available: true,
+            _z: 0,
+            rescode: ResCode::NameError,
+            questions: 0,
+            answer_records: res.header.answer_records,
+            authority_records: 0,
+            additional_records: 0,
+        },
+        questions: vec![],
+        answers: vec![],
+        authorities: vec![],
+        additional: vec![],
+    }))
 }
 
 fn udp_server() -> Result<()> {
@@ -148,13 +224,7 @@ fn tcp_server() -> Result<()> {
 
         let q = msg.questions.remove(0);
 
-        resolve_domain(
-            msg.header.id,
-            q.name,
-            q.qtype,
-            q.qclass,
-            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53)),
-        )?;
+        resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE)?;
     }
 
     Ok(())

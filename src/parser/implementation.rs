@@ -227,7 +227,19 @@ impl Parsable for ResourceRecord {
         }
 
         let data = buf.in_use.slice(0..data_len);
-        buf.in_use.advance(data_len);
+
+        let domain_data = match rtype {
+            // TODO: add tests for this
+            RecordType::NS | RecordType::CNAME => {
+                println!("uhoh");
+                Some(Domain::parse(buf)?)
+            }
+            _ => {
+                buf.in_use.advance(data_len);
+
+                None
+            }
+        };
 
         Ok(ResourceRecord {
             name,
@@ -235,6 +247,7 @@ impl Parsable for ResourceRecord {
             rclass,
             ttl,
             data,
+            domain_data,
         })
     }
 }

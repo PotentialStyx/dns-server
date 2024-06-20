@@ -5,7 +5,7 @@ use bytes::Bytes;
 use super::{OpCode, RecordClass, RecordType, ResCode};
 
 /// DNS Domain
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Domain(pub Vec<String>);
 
 /// TODO: add tests for this maybe(?)
@@ -77,6 +77,7 @@ pub struct ResourceRecord {
     pub ttl: u32,
     /// Actual record data
     pub data: Bytes,
+    pub domain_data: Option<Domain>,
 }
 
 /// A full DNS Message
