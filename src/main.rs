@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::too_many_lines)]
+
 use anyhow::{format_err, Result};
 use bytes::{BufMut, Bytes, BytesMut};
 use serializer::Serializable;
@@ -34,7 +37,7 @@ struct CacheEntry {
 }
 
 fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
-    let mut _buf = BytesMut::new();
+    let mut msg_buf = BytesMut::new();
     Message {
         header: Header {
             id: 0,
@@ -56,11 +59,11 @@ fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
         authorities: vec![],
         additional: vec![],
     }
-    .serialize(&mut _buf)?;
+    .serialize(&mut msg_buf)?;
 
     let mut buf = BytesMut::new();
-    buf.put_u16(_buf.len().try_into()?);
-    buf.put(_buf);
+    buf.put_u16(msg_buf.len().try_into()?);
+    buf.put(msg_buf);
 
     let mut stream = TcpStream::connect(source)?;
 
@@ -105,7 +108,7 @@ fn resolve_domain(
             let min_ttl = u32::MAX;
 
             let ttl_dur =
-                Duration::from_secs((min_ttl as u64).min(MAX_CACHE_SEC).max(MIN_CACHE_SEC));
+                Duration::from_secs(u64::from(min_ttl).min(MAX_CACHE_SEC).max(MIN_CACHE_SEC));
 
             // TODO: maybe use checked_add?
             let ttl = Instant::now() + ttl_dur;
@@ -255,7 +258,7 @@ fn _recursive_resolve(
                     "Cache for {} with {} items was evicted by a request",
                     q.name,
                     entry.answers.len()
-                )
+                );
             }
 
             drop(cache);
@@ -266,6 +269,8 @@ fn _recursive_resolve(
                 entry.answers.len()
             );
 
+            // Known to be <= u16::MAX due to insertion logic
+            #[allow(clippy::cast_possible_truncation)]
             let answer_records = entry.answers.len() as u16;
             let answers = entry.answers.clone();
 
@@ -413,6 +418,7 @@ fn stream_handler(mut stream: TcpStream) -> Result<()> {
     if let Some(msg) = recursive_resolve("TCP", BytesBuf::new(data)) {
         msg.serialize(&mut buf)?;
 
+        #[allow(clippy::cast_possible_truncation)]
         stream.write_all(&u16::to_be_bytes(buf.len() as u16))?;
 
         stream.write_all(&buf)?;
