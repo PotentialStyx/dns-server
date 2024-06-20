@@ -1,16 +1,16 @@
 use std::{
     io::{Read, Write},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream},
 };
 
 use anyhow::Result;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use clap::Parser;
 use parser::{BytesBuf, Parsable};
 use serializer::Serializable;
 use types::*;
 
-static ROOT_SOURCE: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 1, 1, 1), 53));
+static DEFAULT_NAMESERVER: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
 macro_rules! record_type {
     (
@@ -64,13 +64,26 @@ record_type! {
     }
 }
 
+// impl TryFrom<String> for ArgRecordType {
+//     type Error = io::Error;
+
+//     fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
+//         todo!()
+//     }
+// }
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
     domain: String,
 
-    // #[arg(value_enum)]
+    // #[clap(parse(try_from_str))]
     record_type: Option<ArgRecordType>,
+
+    nameserver: Option<IpAddr>,
+
+    #[clap(short = 'p', long)]
+    port: Option<u16>,
 
     #[clap(
         long = "tcp",
@@ -150,33 +163,106 @@ fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
     Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
 }
 
+fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> String {
+    match rtype {
+        RecordType::CNAME | RecordType::NS => {
+            format!("{}", domain.unwrap())
+        }
+        RecordType::AAAA => {
+            format!(
+                "{}",
+                Ipv6Addr::new(
+                    data.get_u16(),
+                    data.get_u16(),
+                    data.get_u16(),
+                    data.get_u16(),
+                    data.get_u16(),
+                    data.get_u16(),
+                    data.get_u16(),
+                    data.get_u16()
+                )
+            )
+        }
+        RecordType::A => {
+            format!("{}", Ipv4Addr::new(data[0], data[1], data[2], data[3]))
+        }
+        RecordType::TXT => {
+            format!(
+                "\"{}\"",
+                std::str::from_utf8(&data).expect("TODO: deal w/ this")
+            )
+        }
+        _ => {
+            format!("{data:#?}")
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    if let Some(rtype) = cli.record_type {
+    assert!(!matches!(cli.record_type, Some(ArgRecordType::Unknown(..))));
+
+    // dbg!(cli);
+    let qtype = if let Some(qtype) = cli.record_type {
         println!(
             "Requesting all {} records for {}",
-            rtype.to_string(),
+            qtype.to_string(),
             cli.domain
         );
 
-        let mut domain = vec![];
-        for part in cli.domain.clone().split('.') {
-            domain.push(part.to_owned());
-        }
-
-        let res = make_request(
-            Question {
-                name: Domain(domain),
-                qtype: rtype.into(),
-                qclass: RecordClass::IN,
-            },
-            ROOT_SOURCE,
-        )
-        .unwrap();
-
-        dbg!(res);
+        qtype.into()
     } else {
         println!("Requesting all records for {}", cli.domain);
+
+        RecordType::ALL
+    };
+
+    let mut domain = vec![];
+    for part in cli.domain.clone().split('.') {
+        domain.push(part.to_owned());
+    }
+
+    // TODO: change based on protocol
+    let default_port = 53;
+
+    let port = match cli.port {
+        Some(port) => port,
+        None => default_port,
+    };
+
+    let nameserver_ip = cli.nameserver.unwrap_or(DEFAULT_NAMESERVER);
+
+    let source = match nameserver_ip {
+        IpAddr::V4(v4) => SocketAddr::V4(SocketAddrV4::new(v4, port)),
+        IpAddr::V6(v6) => SocketAddr::V6(SocketAddrV6::new(v6, port, 0, 0)),
+    };
+
+    let res = make_request(
+        Question {
+            name: Domain(domain),
+            qtype,
+            qclass: RecordClass::IN,
+        },
+        source,
+    )
+    .unwrap();
+
+    if res.answers.is_empty() {
+        println!("womp womp");
+    }
+
+    for record in res.answers {
+        if record.rclass != RecordClass::IN {
+            println!("womp womp womp");
+            continue;
+        }
+        println!(
+            "{} {:#?} {:#?} {}",
+            record.name,
+            record.rtype,
+            record.rclass,
+            format_data(record.rtype, record.data, record.domain_data)
+        );
     }
 }
