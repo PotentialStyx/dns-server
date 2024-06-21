@@ -39,7 +39,8 @@ fn resolve_domain(
             qclass,
         },
         source,
-        utils::Transport::Tcp,
+        // First tries UDP then falls back to TCP
+        utils::Transport::Unspecified,
     )?;
 
     if res.header.answer_records > 0 {

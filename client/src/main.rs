@@ -151,25 +151,6 @@ fn main() {
         (!atty::is(atty::Stream::Stdout) || std::env::var_os("NO_COLOR").is_some() || cli.no_color)
             && std::env::var_os("FORCE_COLOR").is_none();
 
-    let qtype = if let Some(qtype) = cli.record_type {
-        println!(
-            "Requesting all {} records for {}",
-            qtype.to_string(),
-            cli.domain
-        );
-
-        qtype.into()
-    } else {
-        println!("Requesting all records for {}", cli.domain);
-
-        RecordType::ALL
-    };
-
-    let mut domain = vec![];
-    for part in cli.domain.clone().split('.') {
-        domain.push(part.to_owned());
-    }
-
     let transport = if cli.https {
         Transport::Https
     } else if cli.tls {
@@ -181,6 +162,25 @@ fn main() {
     } else {
         Transport::Unspecified
     };
+
+    let qtype = if let Some(qtype) = cli.record_type {
+        println!(
+            "Requesting all {} records for {} via {transport}",
+            qtype.to_string(),
+            cli.domain
+        );
+
+        qtype.into()
+    } else {
+        println!("Requesting all records for {} via {transport}", cli.domain);
+
+        RecordType::ALL
+    };
+
+    let mut domain = vec![];
+    for part in cli.domain.clone().split('.') {
+        domain.push(part.to_owned());
+    }
 
     let default_port = match transport {
         Transport::Udp | Transport::Tcp | Transport::Unspecified => 53,

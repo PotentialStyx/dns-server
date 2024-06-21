@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     io::{Read, Write},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream, UdpSocket},
 };
@@ -11,13 +12,78 @@ use types::{
     Header, Message, OpCode, Question, ResCode,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Transport {
     Tcp,
     Udp,
     Tls,
     Https,
     Unspecified,
+}
+
+impl Display for Transport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Transport::Unspecified => "Unspecified",
+            Transport::Https => "HTTPS",
+            Transport::Tls => "TLS",
+            Transport::Tcp => "TCP",
+            Transport::Udp => "UDP",
+        })
+    }
+}
+
+fn make_tcp_req(data: Bytes, source: SocketAddr) -> Result<Message> {
+    let mut buf = BytesMut::new();
+
+    buf.reserve(data.len() + 2);
+
+    buf.put_u16(data.len().try_into()?);
+    buf.put(data);
+
+    let mut stream = TcpStream::connect(source)?;
+
+    stream.write_all(&buf)?;
+
+    let mut size = [0; 2];
+    stream.read_exact(&mut size)?;
+
+    let size = u16::from_be_bytes(size) as usize;
+
+    let mut data = vec![0; size];
+    stream.read_exact(&mut data)?;
+
+    stream.shutdown(std::net::Shutdown::Both)?;
+
+    let buf: Bytes = data.into();
+
+    Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
+}
+
+fn make_udp_req(data: &Bytes, source: SocketAddr) -> Result<Option<Message>> {
+    let local_bind = match source {
+        SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+        SocketAddr::V6(_) => SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0)),
+    };
+
+    let socket = UdpSocket::bind(local_bind)?;
+
+    socket.send_to(data, source)?;
+
+    let mut data = vec![0; 512];
+    socket.recv(&mut data)?;
+
+    drop(socket);
+
+    let buf: Bytes = data.into();
+
+    let ret = Message::parse(&mut BytesBuf::from_bytes(buf))?;
+
+    if ret.header.is_truncated {
+        Ok(None) // Err(format_err!("Data was truncated, try again over TCP"))
+    } else {
+        Ok(Some(ret))
+    }
 }
 
 pub fn make_request(
@@ -49,61 +115,26 @@ pub fn make_request(
     }
     .serialize(&mut msg_buf)?;
 
+    let data: Bytes = msg_buf.into();
+
     match transport {
-        Transport::Https | Transport::Tls | Transport::Unspecified => {
-            Err(format_err!("WIP transport"))
-        }
-        Transport::Tcp => {
-            let mut buf = BytesMut::new();
-
-            buf.reserve(msg_buf.len() + 2);
-
-            buf.put_u16(msg_buf.len().try_into()?);
-            buf.put(msg_buf);
-
-            let mut stream = TcpStream::connect(source)?;
-
-            stream.write_all(&buf)?;
-
-            let mut size = [0; 2];
-            stream.read_exact(&mut size)?;
-
-            let size = u16::from_be_bytes(size) as usize;
-
-            let mut data = vec![0; size];
-            stream.read_exact(&mut data)?;
-
-            stream.shutdown(std::net::Shutdown::Both)?;
-
-            let buf: Bytes = data.into();
-
-            Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
-        }
+        Transport::Https | Transport::Tls => Err(format_err!("WIP transport")),
+        Transport::Tcp => make_tcp_req(data, source),
         Transport::Udp => {
-            let local_bind = match source {
-                SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
-                SocketAddr::V6(_) => {
-                    SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
-                }
-            };
+            let ret = make_udp_req(&data, source)?;
 
-            let socket = UdpSocket::bind(local_bind)?;
-
-            socket.send_to(&msg_buf, source)?;
-
-            let mut data = vec![0; 512];
-            socket.recv(&mut data)?;
-
-            drop(socket);
-
-            let buf: Bytes = data.into();
-
-            let ret = Message::parse(&mut BytesBuf::from_bytes(buf))?;
-
-            if ret.header.is_truncated {
-                Err(format_err!("Data was truncated, try again over TCP"))
+            if let Some(response) = ret {
+                Ok(response)
             } else {
-                Ok(ret)
+                Err(format_err!("Data was truncated, try again over TCP"))
+            }
+        }
+        Transport::Unspecified => {
+            // TODO: log error when tracing is setup
+            if let Ok(Some(response)) = make_udp_req(&data, source) {
+                Ok(response)
+            } else {
+                make_tcp_req(data, source)
             }
         }
     }
