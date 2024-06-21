@@ -113,7 +113,12 @@ struct Cli {
 fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Option<String> {
     match rtype {
         RecordType::CNAME | RecordType::NS => Some(format!(
-            "\x1b[0;95m{}\x1b[0m",
+            "\"\x1b[0;95m{}\x1b[0m\"",
+            domain.expect("This is garunteed to be Some(...) by the parser")
+        )),
+        RecordType::MX => Some(format!(
+            "{} \"\x1b[0;95m{}\x1b[0m\"",
+            data.get_u16(),
             domain.expect("This is garunteed to be Some(...) by the parser")
         )),
         RecordType::AAAA => Some(format!(
@@ -135,7 +140,7 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Op
         )),
         RecordType::TXT => {
             match std::str::from_utf8(&data) {
-                Ok(data) => Some(format!("\x1b[0;32m\"{data}\"\x1b[0m")),
+                Ok(data) => Some(format!("\"\x1b[0;32m{data}\x1b[0m\"")),
                 Err(err) => {
                     // TODO: handle this
                     eprintln!("uhoh - {err}");
@@ -146,6 +151,24 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Op
         _ => {
             None //format!("{data:#?}")
         }
+    }
+}
+
+fn ttl_to_string(ttl: u32) -> String {
+    let seconds = ttl % 60;
+    let minutes = ttl / 60;
+    let hours = minutes / 60;
+    let days = hours / 24;
+    let years = days / 365; // Doesn't and won't account for leap years
+
+    if hours == 0 {
+        format!("{:0>2}m{seconds:0>2}s", minutes % 60)
+    } else if days == 0 {
+        format!("{:0>2}h{:0>2}m", hours % 24, minutes % 60)
+    } else if years == 0 {
+        format!("{:0>3}d{:0>2}h", days % 365, hours % 24)
+    } else {
+        format!("{years:0>3}y{:0>3}d", days % 365)
     }
 }
 
@@ -240,9 +263,9 @@ fn main() {
         //google.com.             300     IN      A       74.125.142.139
         if let Some(display) = format_data(record.rtype, record.data, record.domain_data) {
             println!(
-                "\x1b[0;96m{:<23}\x1b[0;93m {:<7}\x1b[0m {:<7} {:<7} {}",
+                "\x1b[0;96m{:<23}\x1b[0;93m {:<8}\x1b[0m {:<7} {:<7} {}",
                 record.name.to_string(),
-                record.ttl,
+                ttl_to_string(record.ttl),
                 format!("{:#?}", record.rclass),
                 format!("{:#?}", record.rtype),
                 display

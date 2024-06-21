@@ -232,6 +232,11 @@ impl Parsable for ResourceRecord {
         let domain_data = match rtype {
             // TODO: add tests for this
             RecordType::NS | RecordType::CNAME => Some(Domain::parse(buf)?),
+            RecordType::MX => {
+                buf.in_use.get_u16();
+                Some(Domain::parse(buf)?)
+            }
+
             _ => {
                 buf.in_use.advance(data_len);
 
