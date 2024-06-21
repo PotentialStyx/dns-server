@@ -142,9 +142,11 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Op
             match std::str::from_utf8(&data) {
                 Ok(data) => Some(format!("\"\x1b[0;32m{data}\x1b[0m\"")),
                 Err(err) => {
-                    // TODO: handle this
-                    eprintln!("uhoh - {err}");
-                    None
+                    // err.
+                    // // TODO: handle this
+                    // eprintln!("uhoh - {err}");
+                    // None
+                    Some(format!("This record contained invalid utf-8"))
                 }
             }
         }
