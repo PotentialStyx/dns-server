@@ -259,6 +259,16 @@ impl Parsable for Message {
     {
         let header = Header::parse(buf)?;
 
+        if header.is_truncated {
+            return Ok(Message {
+                header,
+                questions: vec![],
+                answers: vec![],
+                authorities: vec![],
+                additional: vec![],
+            });
+        }
+
         let mut questions = vec![];
         for _ in 0..header.questions {
             questions.push(Question::parse(buf)?);

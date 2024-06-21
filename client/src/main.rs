@@ -3,7 +3,9 @@
 
 use std::{
     io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream},
+    net::{
+        IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream, UdpSocket,
+    },
 };
 
 use anyhow::{format_err, Result};
@@ -72,6 +74,7 @@ enum Transport {
     Udp,
     Tls,
     Https,
+    Unspecified,
 }
 
 #[derive(Parser, Debug)]
@@ -121,7 +124,6 @@ struct Cli {
     no_color: bool,
 }
 
-// TODO: use transport
 fn make_request(question: Question, source: SocketAddr, transport: Transport) -> Result<Message> {
     let mut msg_buf = BytesMut::new();
     Message {
@@ -147,27 +149,64 @@ fn make_request(question: Question, source: SocketAddr, transport: Transport) ->
     }
     .serialize(&mut msg_buf)?;
 
-    let mut buf = BytesMut::new();
-    buf.put_u16(msg_buf.len().try_into()?);
-    buf.put(msg_buf);
+    match transport {
+        Transport::Https | Transport::Tls | Transport::Unspecified => {
+            Err(format_err!("WIP transport"))
+        }
+        Transport::Tcp => {
+            let mut buf = BytesMut::new();
 
-    let mut stream = TcpStream::connect(source)?;
+            buf.reserve(msg_buf.len() + 2);
 
-    stream.write_all(&buf)?;
+            buf.put_u16(msg_buf.len().try_into()?);
+            buf.put(msg_buf);
 
-    let mut size = [0; 2];
-    stream.read_exact(&mut size)?;
+            let mut stream = TcpStream::connect(source)?;
 
-    let size = u16::from_be_bytes(size) as usize;
+            stream.write_all(&buf)?;
 
-    let mut data = vec![0; size];
-    stream.read_exact(&mut data)?;
+            let mut size = [0; 2];
+            stream.read_exact(&mut size)?;
 
-    stream.shutdown(std::net::Shutdown::Both)?;
+            let size = u16::from_be_bytes(size) as usize;
 
-    let buf: Bytes = data.into();
+            let mut data = vec![0; size];
+            stream.read_exact(&mut data)?;
 
-    Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
+            stream.shutdown(std::net::Shutdown::Both)?;
+
+            let buf: Bytes = data.into();
+
+            Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
+        }
+        Transport::Udp => {
+            let local_bind = match source {
+                SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)),
+                SocketAddr::V6(_) => {
+                    SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))
+                }
+            };
+
+            let socket = UdpSocket::bind(local_bind)?;
+
+            socket.send_to(&msg_buf, source)?;
+
+            let mut data = vec![0; 512];
+            socket.recv(&mut data)?;
+
+            drop(socket);
+
+            let buf: Bytes = data.into();
+
+            let ret = Message::parse(&mut BytesBuf::from_bytes(buf))?;
+
+            if ret.header.is_truncated {
+                Err(format_err!("Data was truncated, try again over TCP"))
+            } else {
+                Ok(ret)
+            }
+        }
+    }
 }
 
 fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Option<String> {
@@ -197,7 +236,8 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Op
             match std::str::from_utf8(&data) {
                 Ok(data) => Some(format!("\"{data}\"")),
                 Err(err) => {
-                    eprintln!("uhoh - {err}"); // TODO: deal with this
+                    // TODO: handle this
+                    eprintln!("uhoh - {err}");
                     None
                 }
             }
@@ -239,12 +279,14 @@ fn main() {
         Transport::Tls
     } else if cli.udp {
         Transport::Udp
-    } else {
+    } else if cli.tcp {
         Transport::Tcp
+    } else {
+        Transport::Unspecified
     };
 
     let default_port = match transport {
-        Transport::Udp | Transport::Tcp => 53,
+        Transport::Udp | Transport::Tcp | Transport::Unspecified => 53,
         Transport::Tls => 853,
         Transport::Https => 443,
     };
@@ -279,11 +321,13 @@ fn main() {
     };
 
     if res.answers.is_empty() {
+        // TODO: handle this
         println!("womp womp");
     }
 
     for record in res.answers {
         if record.rclass != RecordClass::IN {
+            // TODO: handle this
             println!("womp womp womp");
             continue;
         }
