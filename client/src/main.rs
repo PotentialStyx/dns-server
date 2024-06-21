@@ -1,20 +1,25 @@
+#![warn(clippy::pedantic, clippy::all)]
+#![deny(clippy::unwrap_used)]
+
 use std::{
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream},
 };
 
-use anyhow::Result;
+use anyhow::{format_err, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use clap::Parser;
 use parser::{BytesBuf, Parsable};
 use serializer::Serializable;
-use types::*;
+use types::{
+    parser, serializer, Domain, Header, Message, OpCode, Question, RecordClass, RecordType, ResCode,
+};
 
 static DEFAULT_NAMESERVER: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
 macro_rules! record_type {
     (
-        $vis:vis enum $name:ident[$unknown:ident] {
+        $vis:vis enum $name:ident {
             $($field:ident,)*
         }
     ) => {
@@ -22,14 +27,13 @@ macro_rules! record_type {
         #[allow(clippy::upper_case_acronyms)]
         $vis enum $name {
             $($field,)*
-            $unknown(String)
         }
 
-        impl From<String> for $name {
-            fn from(s: String) -> Self {
-                match s.as_str() {
-                    $(stringify!($field) => Self::$field,)*
-                    _ => Self::$unknown(s),
+        impl $name {
+            fn parse(arg: &str) -> anyhow::Result<$name> {
+                match arg {
+                    $(stringify!($field) => Ok($name::$field),)*
+                    _ => Err(anyhow::format_err!("Invalid {}: \"{}\"", stringify!($name), arg)),
                 }
             }
         }
@@ -38,7 +42,6 @@ macro_rules! record_type {
             fn from(s: $name) -> Self {
                 match s {
                     $($name::$field => Self::$field,)*
-                    $name::$unknown(_) => Self::Unknown(0),
                 }
             }
         }
@@ -47,7 +50,6 @@ macro_rules! record_type {
             fn to_string(&self) -> String {
                 match self {
                     $($name::$field => stringify!($field).to_string(),)*
-                    $name::$unknown(inner) => inner.clone(),
                 }
             }
         }
@@ -55,7 +57,7 @@ macro_rules! record_type {
 }
 
 record_type! {
-    enum ArgRecordType[Unknown] {
+    enum ArgRecordType {
         A,
         NS,
         ALL,
@@ -64,20 +66,21 @@ record_type! {
     }
 }
 
-// impl TryFrom<String> for ArgRecordType {
-//     type Error = io::Error;
-
-//     fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-//         todo!()
-//     }
-// }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Transport {
+    Tcp,
+    Udp,
+    Tls,
+    Https,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     domain: String,
 
-    // #[clap(parse(try_from_str))]
+    #[clap(value_parser=ArgRecordType::parse)]
     record_type: Option<ArgRecordType>,
 
     nameserver: Option<IpAddr>,
@@ -118,7 +121,8 @@ struct Cli {
     no_color: bool,
 }
 
-fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
+// TODO: use transport
+fn make_request(question: Question, source: SocketAddr, transport: Transport) -> Result<Message> {
     let mut msg_buf = BytesMut::new();
     Message {
         header: Header {
@@ -166,50 +170,49 @@ fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
     Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
 }
 
-fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> String {
+fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Option<String> {
     match rtype {
-        RecordType::CNAME | RecordType::NS => {
-            format!("{}", domain.unwrap())
-        }
-        RecordType::AAAA => {
-            format!(
-                "{}",
-                Ipv6Addr::new(
-                    data.get_u16(),
-                    data.get_u16(),
-                    data.get_u16(),
-                    data.get_u16(),
-                    data.get_u16(),
-                    data.get_u16(),
-                    data.get_u16(),
-                    data.get_u16()
-                )
+        RecordType::CNAME | RecordType::NS => Some(format!(
+            "{}",
+            domain.expect("This is garunteed to be Some(...) by the parser")
+        )),
+        RecordType::AAAA => Some(format!(
+            "{}",
+            Ipv6Addr::new(
+                data.get_u16(),
+                data.get_u16(),
+                data.get_u16(),
+                data.get_u16(),
+                data.get_u16(),
+                data.get_u16(),
+                data.get_u16(),
+                data.get_u16()
             )
-        }
-        RecordType::A => {
-            format!("{}", Ipv4Addr::new(data[0], data[1], data[2], data[3]))
-        }
+        )),
+        RecordType::A => Some(format!(
+            "{}",
+            Ipv4Addr::new(data[0], data[1], data[2], data[3])
+        )),
         RecordType::TXT => {
-            format!(
-                "\"{}\"",
-                std::str::from_utf8(&data).expect("TODO: deal w/ this")
-            )
+            match std::str::from_utf8(&data) {
+                Ok(data) => Some(format!("\"{data}\"")),
+                Err(err) => {
+                    eprintln!("uhoh - {err}"); // TODO: deal with this
+                    None
+                }
+            }
         }
         _ => {
-            format!("{data:#?}")
+            None //format!("{data:#?}")
         }
     }
 }
 
 fn main() {
     let cli = Cli::parse();
-    let no_color =
+    let _no_color =
         (!atty::is(atty::Stream::Stdout) || std::env::var_os("NO_COLOR").is_some() || cli.no_color)
             && std::env::var_os("FORCE_COLOR").is_none();
-
-    // TODO: find a way to remove the Unknown param type
-    // clap is kinda annoying
-    assert!(!matches!(cli.record_type, Some(ArgRecordType::Unknown(..))));
 
     let qtype = if let Some(qtype) = cli.record_type {
         println!(
@@ -230,8 +233,21 @@ fn main() {
         domain.push(part.to_owned());
     }
 
-    // TODO: change based on protocol
-    let default_port = 53;
+    let transport = if cli.https {
+        Transport::Https
+    } else if cli.tls {
+        Transport::Tls
+    } else if cli.udp {
+        Transport::Udp
+    } else {
+        Transport::Tcp
+    };
+
+    let default_port = match transport {
+        Transport::Udp | Transport::Tcp => 53,
+        Transport::Tls => 853,
+        Transport::Https => 443,
+    };
 
     let port = match cli.port {
         Some(port) => port,
@@ -245,15 +261,22 @@ fn main() {
         IpAddr::V6(v6) => SocketAddr::V6(SocketAddrV6::new(v6, port, 0, 0)),
     };
 
-    let res = make_request(
+    let res = match make_request(
         Question {
             name: Domain(domain),
             qtype,
             qclass: RecordClass::IN,
         },
         source,
-    )
-    .unwrap();
+        transport,
+    ) {
+        Ok(res) => res,
+        Err(err) => {
+            // TODO: handle this
+            eprintln!("{err}");
+            return;
+        }
+    };
 
     if res.answers.is_empty() {
         println!("womp womp");
@@ -264,12 +287,12 @@ fn main() {
             println!("womp womp womp");
             continue;
         }
-        println!(
-            "{} {:#?} {:#?} {}",
-            record.name,
-            record.rtype,
-            record.rclass,
-            format_data(record.rtype, record.data, record.domain_data)
-        );
+
+        if let Some(display) = format_data(record.rtype, record.data, record.domain_data) {
+            println!(
+                "{} {:#?} {:#?} {}",
+                record.name, record.rtype, record.rclass, display
+            );
+        }
     }
 }
