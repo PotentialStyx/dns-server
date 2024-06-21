@@ -232,8 +232,12 @@ fn main() {
 
         if let Some(display) = format_data(record.rtype, record.data, record.domain_data) {
             println!(
-                "{} {:#?} {:#?} {}",
-                record.name, record.rtype, record.rclass, display
+                "{:<20}{:>8}    {:#?} {:#?} {}",
+                record.name.to_string(),
+                record.ttl,
+                record.rtype,
+                record.rclass,
+                display
             );
         }
     }
