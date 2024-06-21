@@ -11,3 +11,4 @@ atty = "0.2.14"
 bytes = "1.6.0"
 clap = { version = "4.5.7", features = ["derive"] }
 types = { path = "../dns-types",package = "dns-types"}
+utils = { version = "0.1.0", path = "../utils" }

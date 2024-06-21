@@ -2,13 +2,14 @@
 #![allow(clippy::too_many_lines)]
 
 use anyhow::Result;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::BytesMut;
 use std::{
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket},
     thread,
     time::Duration,
 };
+use utils::make_request;
 
 use types::{
     parser::{BytesBuf, Parsable},
@@ -20,54 +21,6 @@ static ROOT_SOURCE: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53));
 
 const UDP_MAX_SIZE: usize = 512;
-
-fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
-    let mut msg_buf = BytesMut::new();
-    Message {
-        header: Header {
-            id: 0,
-            is_response: false,
-            opcode: OpCode::Query,
-            is_authoritative: false,
-            is_truncated: false,
-            should_recurse: false,
-            recursion_available: false,
-            _z: 0,
-            rescode: ResCode::NoError,
-            questions: 1,
-            answer_records: 0,
-            authority_records: 0,
-            additional_records: 0,
-        },
-        questions: vec![question],
-        answers: vec![],
-        authorities: vec![],
-        additional: vec![],
-    }
-    .serialize(&mut msg_buf)?;
-
-    let mut buf = BytesMut::new();
-    buf.put_u16(msg_buf.len().try_into()?);
-    buf.put(msg_buf);
-
-    let mut stream = TcpStream::connect(source)?;
-
-    stream.write_all(&buf)?;
-
-    let mut size = [0; 2];
-    stream.read_exact(&mut size)?;
-
-    let size = u16::from_be_bytes(size) as usize;
-
-    let mut data = vec![0; size];
-    stream.read_exact(&mut data)?;
-
-    stream.shutdown(std::net::Shutdown::Both)?;
-
-    let buf: Bytes = data.into();
-
-    Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
-}
 
 // TODO: move error message and NXDOMAIN logic out of this func
 // by returning Result<Option<Message>> and having an outer func
@@ -86,6 +39,7 @@ fn resolve_domain(
             qclass,
         },
         source,
+        utils::Transport::Tcp,
     )?;
 
     if res.header.answer_records > 0 {
