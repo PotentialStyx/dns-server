@@ -186,6 +186,7 @@ fn main() {
         Transport::Udp | Transport::Tcp | Transport::Unspecified => 53,
         Transport::Tls => 853,
         Transport::Https => 443,
+        _ => unreachable!(),
     };
 
     let port = match cli.port {

@@ -3,6 +3,7 @@ use std::{
     io::{Read, Write},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream, UdpSocket},
     sync::Arc,
+    time::Duration,
 };
 
 use anyhow::{format_err, Result};
@@ -21,16 +22,20 @@ pub enum Transport {
     Tls,
     Https,
     Unspecified,
+    TryEncrypted,
+    UnspecifiedEncrypted,
 }
 
 impl Display for Transport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Transport::Unspecified => "Unspecified",
-            Transport::Https => "HTTPS",
-            Transport::Tls => "TLS",
-            Transport::Tcp => "TCP",
-            Transport::Udp => "UDP",
+            Transport::Tls => "Transport::TLS",
+            Transport::Tcp => "Transport::TCP",
+            Transport::Udp => "Transport::UDP",
+            Transport::Https => "Transport::HTTPS",
+            Transport::TryEncrypted => "Transport::TryEncrypted",
+            Transport::Unspecified => "Transport::Unspecified",
+            Transport::UnspecifiedEncrypted => "Transport::UnspecifiedEncrypted",
         })
     }
 }
@@ -58,7 +63,7 @@ fn generic_stream_req<T: Read + Write>(stream: &mut T, data: Bytes) -> Result<Me
     Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
 }
 
-fn make_tls_req(data: Bytes, source: SocketAddr) -> Result<Message> {
+fn make_tls_req(data: Bytes, source: SocketAddr) -> Result<Option<Message>> {
     let root_store = RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.into(),
     };
@@ -70,7 +75,8 @@ fn make_tls_req(data: Bytes, source: SocketAddr) -> Result<Message> {
 
     let server_name = ServerName::IpAddress(source.ip().into());
     let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
-    let mut sock = TcpStream::connect(source).unwrap();
+
+    let mut sock = TcpStream::connect_timeout(&source, Duration::from_secs(5)).unwrap();
 
     let mut tls_stream = rustls::Stream::new(&mut conn, &mut sock);
 
@@ -78,7 +84,7 @@ fn make_tls_req(data: Bytes, source: SocketAddr) -> Result<Message> {
 
     tls_stream.conn.send_close_notify();
 
-    Ok(res)
+    Ok(Some(res))
 }
 
 fn make_tcp_req(data: Bytes, source: SocketAddr) -> Result<Message> {
@@ -117,6 +123,15 @@ fn make_udp_req(data: &Bytes, source: SocketAddr) -> Result<Option<Message>> {
     }
 }
 
+pub fn make_unspecified_req(data: Bytes, source: SocketAddr) -> Result<Message> {
+    // TODO: log error when tracing is setup
+    if let Ok(Some(response)) = make_udp_req(&data, source) {
+        Ok(response)
+    } else {
+        make_tcp_req(data, source)
+    }
+}
+
 pub fn make_request(
     question: Question,
     source: SocketAddr,
@@ -150,23 +165,31 @@ pub fn make_request(
 
     match transport {
         Transport::Https => Err(format_err!("HTTPS is a WIP transport")),
-        Transport::Tls => make_tls_req(data, source),
         Transport::Tcp => make_tcp_req(data, source),
         Transport::Udp => {
-            let ret = make_udp_req(&data, source)?;
-
-            if let Some(response) = ret {
+            if let Some(response) = make_udp_req(&data, source)? {
                 Ok(response)
             } else {
                 Err(format_err!("Data was truncated, try again over TCP"))
             }
         }
-        Transport::Unspecified => {
-            // TODO: log error when tracing is setup
-            if let Ok(Some(response)) = make_udp_req(&data, source) {
+        Transport::Unspecified => make_unspecified_req(data, source),
+        // TODO: Make unspecified ecrypted fall back to/from HTTPS once thats implemented
+        Transport::Tls | Transport::UnspecifiedEncrypted => {
+            if let Some(response) = make_tls_req(data, source)? {
                 Ok(response)
             } else {
-                make_tcp_req(data, source)
+                Err(format_err!(
+                    "Failed to connect to TLS socket, try again over UDP/TCP"
+                ))
+            }
+        }
+        Transport::TryEncrypted => {
+            // TODO: log error when tracing is setup
+            if let Some(response) = make_tls_req(data.clone(), source)? {
+                Ok(response)
+            } else {
+                make_unspecified_req(data, source)
             }
         }
     }
