@@ -2,10 +2,12 @@ use std::{
     fmt::Display,
     io::{Read, Write},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpStream, UdpSocket},
+    sync::Arc,
 };
 
 use anyhow::{format_err, Result};
 use bytes::{BufMut, Bytes, BytesMut};
+use rustls::{pki_types::ServerName, RootCertStore};
 use types::{
     parser::{BytesBuf, Parsable},
     serializer::Serializable,
@@ -33,15 +35,13 @@ impl Display for Transport {
     }
 }
 
-fn make_tcp_req(data: Bytes, source: SocketAddr) -> Result<Message> {
+fn generic_stream_req<T: Read + Write>(stream: &mut T, data: Bytes) -> Result<Message> {
     let mut buf = BytesMut::new();
 
     buf.reserve(data.len() + 2);
 
     buf.put_u16(data.len().try_into()?);
     buf.put(data);
-
-    let mut stream = TcpStream::connect(source)?;
 
     stream.write_all(&buf)?;
 
@@ -53,11 +53,42 @@ fn make_tcp_req(data: Bytes, source: SocketAddr) -> Result<Message> {
     let mut data = vec![0; size];
     stream.read_exact(&mut data)?;
 
-    stream.shutdown(std::net::Shutdown::Both)?;
-
     let buf: Bytes = data.into();
 
     Ok(Message::parse(&mut BytesBuf::from_bytes(buf))?)
+}
+
+fn make_tls_req(data: Bytes, source: SocketAddr) -> Result<Message> {
+    let root_store = RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.into(),
+    };
+    let mut config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
+    config.key_log = Arc::new(rustls::KeyLogFile::new());
+
+    let server_name = ServerName::IpAddress(source.ip().into());
+    let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+    let mut sock = TcpStream::connect(source).unwrap();
+
+    let mut tls_stream = rustls::Stream::new(&mut conn, &mut sock);
+
+    let res = generic_stream_req(&mut tls_stream, data)?;
+
+    tls_stream.conn.send_close_notify();
+
+    Ok(res)
+}
+
+fn make_tcp_req(data: Bytes, source: SocketAddr) -> Result<Message> {
+    let mut stream = TcpStream::connect(source)?;
+
+    let res = generic_stream_req(&mut stream, data)?;
+
+    stream.shutdown(std::net::Shutdown::Both)?;
+
+    Ok(res)
 }
 
 fn make_udp_req(data: &Bytes, source: SocketAddr) -> Result<Option<Message>> {
@@ -118,7 +149,8 @@ pub fn make_request(
     let data: Bytes = msg_buf.into();
 
     match transport {
-        Transport::Https | Transport::Tls => Err(format_err!("WIP transport")),
+        Transport::Https => Err(format_err!("HTTPS is a WIP transport")),
+        Transport::Tls => make_tls_req(data, source),
         Transport::Tcp => make_tcp_req(data, source),
         Transport::Udp => {
             let ret = make_udp_req(&data, source)?;
