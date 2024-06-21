@@ -10,7 +10,7 @@ fn correct_total_encoding() {
     assert_eq!(
         Question {
             name: Domain(vec!["www".into(), "hackclub".into(), "com".into()]),
-            qtype: RecordType::ALL,
+            qtype: RecordType::ANY,
             qclass: RecordClass::IN,
         }
         .serialize(&mut buf),

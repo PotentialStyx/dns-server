@@ -1,7 +1,10 @@
 #![warn(clippy::pedantic, clippy::all)]
 #![deny(clippy::unwrap_used)]
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::{
+    collections::HashSet,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+};
 
 use bytes::{Buf, Bytes};
 use clap::Parser;
@@ -53,7 +56,8 @@ record_type! {
     enum ArgRecordType {
         A,
         NS,
-        ALL,
+        ANY,
+        TXT,
         AAAA,
         CNAME,
     }
@@ -109,11 +113,11 @@ struct Cli {
 fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Option<String> {
     match rtype {
         RecordType::CNAME | RecordType::NS => Some(format!(
-            "{}",
+            "\x1b[0;95m{}\x1b[0m",
             domain.expect("This is garunteed to be Some(...) by the parser")
         )),
         RecordType::AAAA => Some(format!(
-            "{}",
+            "\x1b[0;35m{}\x1b[0m",
             Ipv6Addr::new(
                 data.get_u16(),
                 data.get_u16(),
@@ -126,12 +130,12 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Op
             )
         )),
         RecordType::A => Some(format!(
-            "{}",
+            "\x1b[0;35m{}\x1b[0m",
             Ipv4Addr::new(data[0], data[1], data[2], data[3])
         )),
         RecordType::TXT => {
             match std::str::from_utf8(&data) {
-                Ok(data) => Some(format!("\"{data}\"")),
+                Ok(data) => Some(format!("\x1b[0;32m\"{data}\"\x1b[0m")),
                 Err(err) => {
                     // TODO: handle this
                     eprintln!("uhoh - {err}");
@@ -164,17 +168,17 @@ fn main() {
     };
 
     let qtype = if let Some(qtype) = cli.record_type {
-        println!(
-            "Requesting all {} records for {} via {transport}",
-            qtype.to_string(),
-            cli.domain
-        );
+        // println!(
+        //     "Requesting all {} records for {} via {transport}",
+        //     qtype.to_string(),
+        //     cli.domain
+        // );
 
         qtype.into()
     } else {
-        println!("Requesting all records for {} via {transport}", cli.domain);
+        // println!("Requesting all records for {} via {transport}", cli.domain);
 
-        RecordType::ALL
+        RecordType::ANY
     };
 
     let mut domain = vec![];
@@ -220,8 +224,10 @@ fn main() {
 
     if res.answers.is_empty() {
         // TODO: handle this
-        println!("womp womp");
+        // println!("womp womp");
     }
+
+    let mut unsupported = HashSet::new();
 
     for record in res.answers {
         if record.rclass != RecordClass::IN {
@@ -230,15 +236,27 @@ fn main() {
             continue;
         }
 
+        //hackclub.com.           3789    IN      HINFO   "RFC8482" ""
+        //google.com.             300     IN      A       74.125.142.139
         if let Some(display) = format_data(record.rtype, record.data, record.domain_data) {
             println!(
-                "{:<20}{:>8}    {:#?} {:#?} {}",
+                "\x1b[0;96m{:<23}\x1b[0;93m {:<7}\x1b[0m {:<7} {:<7} {}",
                 record.name.to_string(),
                 record.ttl,
-                record.rtype,
-                record.rclass,
+                format!("{:#?}", record.rclass),
+                format!("{:#?}", record.rtype),
                 display
             );
+        } else {
+            unsupported.insert(record.rtype);
+        }
+    }
+
+    for rtype in unsupported {
+        if let RecordType::Unknown(id) = rtype {
+            println!("\x1b[0;91mUnsupported record type with id {id}");
+        } else {
+            println!("\x1b[0;91mUnsupported record type {rtype:#?}");
         }
     }
 }

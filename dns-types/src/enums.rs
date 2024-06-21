@@ -4,7 +4,7 @@ macro_rules! useful_enum {
             $($field:ident = $value:expr,)*
         }
     ) => {
-        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
         #[repr($type)]
         #[allow(clippy::upper_case_acronyms)]
         $vis enum $name {
@@ -86,7 +86,7 @@ useful_enum! {
         AXFR = 252,  // A request for a transfer of an entire zone
         MAILB = 253, // A request for mailbox-related records (MB, MG or MR)
         MAILA = 254, // A request for mail agent RRs (Obsolete - see MX)
-        ALL = 255,   // A request for all records
+        ANY = 255,   // A request for all records
     }
 }
 
