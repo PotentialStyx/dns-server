@@ -113,6 +113,9 @@ struct Cli {
         conflicts_with = "udp"
     )]
     https: bool,
+
+    #[clap(long = "no-color")]
+    no_color: bool,
 }
 
 fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
@@ -200,10 +203,14 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> St
 
 fn main() {
     let cli = Cli::parse();
+    let no_color =
+        (!atty::is(atty::Stream::Stdout) || std::env::var_os("NO_COLOR").is_some() || cli.no_color)
+            && std::env::var_os("FORCE_COLOR").is_none();
 
+    // TODO: find a way to remove the Unknown param type
+    // clap is kinda annoying
     assert!(!matches!(cli.record_type, Some(ArgRecordType::Unknown(..))));
 
-    // dbg!(cli);
     let qtype = if let Some(qtype) = cli.record_type {
         println!(
             "Requesting all {} records for {}",
