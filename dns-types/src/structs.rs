@@ -65,7 +65,7 @@ pub struct Question {
 }
 
 /// One singular Resource Record
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ResourceRecord {
     /// Domain this record refers to
     pub name: Domain,

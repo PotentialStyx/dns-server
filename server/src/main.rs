@@ -1,36 +1,25 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::too_many_lines)]
 
-use anyhow::{format_err, Result};
+use anyhow::Result;
 use bytes::{BufMut, Bytes, BytesMut};
 use std::{
-    collections::BTreeMap,
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket},
-    sync::RwLock,
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use types::{
     parser::{BytesBuf, Parsable},
     serializer::Serializable,
-    Domain, Header, Message, OpCode, Question, RecordClass, RecordType, ResCode, ResourceRecord,
+    Domain, Header, Message, OpCode, Question, RecordClass, RecordType, ResCode,
 };
 
 static ROOT_SOURCE: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 41, 162, 30), 53));
 
-static CACHE: RwLock<BTreeMap<Domain, CacheEntry>> = RwLock::new(BTreeMap::new());
-static MAX_CACHE_SEC: u64 = 60 * 60;
-static MIN_CACHE_SEC: u64 = 60 * 5;
-
 const UDP_MAX_SIZE: usize = 512;
-
-struct CacheEntry {
-    answers: Vec<ResourceRecord>,
-    ttl: Instant,
-}
 
 fn make_request(question: Question, source: SocketAddr) -> Result<Message> {
     let mut msg_buf = BytesMut::new();
@@ -100,37 +89,6 @@ fn resolve_domain(
     )?;
 
     if res.header.answer_records > 0 {
-        {
-            let min_ttl = u32::MAX;
-
-            let ttl_dur =
-                Duration::from_secs(u64::from(min_ttl).min(MAX_CACHE_SEC).max(MIN_CACHE_SEC));
-
-            // TODO: maybe use checked_add?
-            let ttl = Instant::now() + ttl_dur;
-
-            let mut cache = match CACHE.write() {
-                Ok(cache) => cache,
-                Err(err) => return Err(format_err!("CACHE is poisoned... uhoh: {err}")),
-            };
-
-            cache.insert(
-                request.clone(),
-                CacheEntry {
-                    answers: res.answers.clone(),
-                    ttl,
-                },
-            );
-
-            drop(cache);
-
-            println!(
-                "Inserted {} items for {request} cache for {} seconds",
-                res.answers.len(),
-                ttl_dur.as_secs()
-            );
-        }
-
         return Ok(Some(Message {
             header: Header {
                 id,
@@ -223,80 +181,6 @@ fn _recursive_resolve(
 
     let q = msg.questions.remove(0);
     println!("New {transport} lookup for: {}", q.name);
-
-    let cache = match CACHE.read() {
-        Ok(cache) => cache,
-        Err(err) => {
-            return Err((
-                Some(msg.header.id),
-                format_err!("CACHE is poisoned... uhoh: {err}"),
-            ))
-        }
-    };
-
-    if let Some(entry) = cache.get(&q.name) {
-        if entry.ttl < Instant::now() {
-            drop(cache);
-
-            let mut cache = match CACHE.write() {
-                Ok(cache) => cache,
-                Err(err) => {
-                    return Err((
-                        Some(msg.header.id),
-                        format_err!("CACHE is poisoned... uhoh: {err}"),
-                    ))
-                }
-            };
-
-            // Race condition prevention, can't just unwrap because another writer could've gotten access before us and already removed it
-            if let Some(entry) = cache.remove(&q.name) {
-                println!(
-                    "Cache for {} with {} items was evicted by a request",
-                    q.name,
-                    entry.answers.len()
-                );
-            }
-
-            drop(cache);
-        } else if !entry.answers.is_empty() {
-            println!(
-                "Cache hit for {} with {} items",
-                q.name,
-                entry.answers.len()
-            );
-
-            // Known to be <= u16::MAX due to insertion logic
-            #[allow(clippy::cast_possible_truncation)]
-            let answer_records = entry.answers.len() as u16;
-            let answers = entry.answers.clone();
-
-            drop(cache);
-            return Ok(Message {
-                header: Header {
-                    id: msg.header.id,
-                    is_response: true,
-                    opcode: OpCode::Query,
-                    is_authoritative: false,
-                    is_truncated: false,
-                    should_recurse: false,
-                    recursion_available: true,
-                    _z: 0,
-                    rescode: ResCode::NoError,
-                    questions: 0,
-                    // Already known to be u16 because inserter would've verified
-                    answer_records,
-                    authority_records: 0,
-                    additional_records: 0,
-                },
-                questions: vec![],
-                answers,
-                authorities: vec![],
-                additional: vec![],
-            });
-        }
-    } else {
-        drop(cache);
-    }
 
     match resolve_domain(msg.header.id, q.name, q.qtype, q.qclass, ROOT_SOURCE) {
         Ok(res) => match res {
@@ -437,42 +321,12 @@ fn tcp_server() -> Result<()> {
     Ok(())
 }
 
-fn cache_eviction_thread() -> Result<()> {
-    loop {
-        let mut cache = match CACHE.write() {
-            Ok(cache) => cache,
-            Err(err) => return Err(format_err!("CACHE is poisoned... uhoh: {err}")),
-        };
-
-        cache.retain(|domain, entry| {
-            if entry.ttl < Instant::now() {
-                println!(
-                    "Cache for {} with {} items was evicted by timer",
-                    domain,
-                    entry.answers.len()
-                );
-
-                false
-            } else {
-                true
-            }
-        });
-
-        drop(cache);
-
-        thread::sleep(Duration::from_secs(MAX_CACHE_SEC));
-    }
-}
-
 fn main() -> Result<()> {
-    let cache = thread::spawn(|| cache_eviction_thread().unwrap());
-
     let tcp = thread::spawn(|| tcp_server().unwrap());
 
     // For now don't handle UDP
     thread::spawn(udp_server).join().unwrap()?;
     tcp.join().unwrap();
-    cache.join().unwrap();
 
     Ok(())
 }
