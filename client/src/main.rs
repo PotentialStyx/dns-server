@@ -119,6 +119,16 @@ struct Cli {
     no_color: bool,
 }
 
+fn format_domain(domain: &Domain, idna: bool) -> String {
+    let res = if idna {
+        domain.idna_to_string()
+    } else {
+        domain.to_string()
+    };
+
+    format!("\x1b[0;95m{res}\x1b[0m")
+}
+
 #[allow(clippy::too_many_lines)] // TODO: dont
 fn format_data(
     rtype: RecordType,
@@ -127,20 +137,23 @@ fn format_data(
     after_ptr: Option<usize>,
 ) -> Option<String> {
     match rtype {
-        RecordType::CNAME | RecordType::NS => Some(format!(
-            "\"\x1b[0;95m{}\x1b[0m\"",
+        RecordType::CNAME | RecordType::NS => Some(format_domain(
             domain
                 .expect("This is garunteed to be Some(...) by the parser")
                 .first()
-                .expect("This is garunteed to be Some(...) by the parser")
+                .expect("This is garunteed to be Some(...) by the parser"),
+            true,
         )),
         RecordType::MX => Some(format!(
-            "{} \"\x1b[0;95m{}\x1b[0m\"",
+            "{} {}",
             data.get_u16(),
-            domain
-                .expect("This is garunteed to be Some(...) by the parser")
-                .first()
-                .expect("This is garunteed to be Some(...) by the parser")
+            format_domain(
+                domain
+                    .expect("This is garunteed to be Some(...) by the parser")
+                    .first()
+                    .expect("This is garunteed to be Some(...) by the parser"),
+                true
+            )
         )),
         RecordType::SOA => {
             let mut domains = domain.expect("This is garunteed to be Some(...) by the parser");
@@ -166,7 +179,7 @@ fn format_data(
 
             Some(format!(
                 "\"\x1b[0;95m{}\x1b[0m\" {email} {} {} {} {} {}",
-                mname.idna_to_string(),
+                format_domain(&mname, true),
                 data.get_u32(),
                 data.get_u32(),
                 data.get_u32(),
@@ -317,7 +330,7 @@ fn format_data(
 
             Some(format!(
                 "{priority} {} {}",
-                name.idna_to_string(),
+                format_domain(&name, true),
                 &attributes_rendered[1..]
             ))
         }
