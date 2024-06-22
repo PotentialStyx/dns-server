@@ -20,6 +20,27 @@ impl Display for Domain {
     }
 }
 
+impl Domain {
+    pub fn idna_to_string(&self) -> String {
+        let mut ret = String::new();
+
+        for part in &self.0 {
+            if part.starts_with("xn--") {
+                match punycode::decode(&part[3..]) {
+                    Ok(part) => ret += &part,
+                    Err(_) => ret += part,
+                }
+            } else {
+                ret += part;
+            }
+
+            ret += ".";
+        }
+
+        ret
+    }
+}
+
 // TODO: Maybe give this a display implementation
 /// DNS Record Header
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +98,8 @@ pub struct ResourceRecord {
     pub ttl: u32,
     /// Actual record data
     pub data: Bytes,
-    pub domain_data: Option<Domain>,
+    pub domain_data: Option<Vec<Domain>>,
+    pub after_ptr: Option<usize>,
 }
 
 /// A full DNS Message

@@ -42,11 +42,11 @@ macro_rules! record_type {
             }
         }
 
-        impl ToString for $name {
-            fn to_string(&self) -> String {
-                match self {
-                    $($name::$field => stringify!($field).to_string(),)*
-                }
+        impl std::fmt::Display for $name {
+            fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                fmt.write_str(match self {
+                    $($name::$field => stringify!($field),)*
+                })
             }
         }
     };
@@ -56,6 +56,8 @@ record_type! {
     enum ArgRecordType {
         A,
         NS,
+        MX,
+        SOA,
         ANY,
         TXT,
         AAAA,
@@ -110,17 +112,60 @@ struct Cli {
     no_color: bool,
 }
 
-fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Option<String> {
+fn format_data(
+    rtype: RecordType,
+    mut data: Bytes,
+    domain: Option<Vec<Domain>>,
+    after_ptr: Option<usize>,
+) -> Option<String> {
     match rtype {
         RecordType::CNAME | RecordType::NS => Some(format!(
             "\"\x1b[0;95m{}\x1b[0m\"",
-            domain.expect("This is garunteed to be Some(...) by the parser")
+            domain
+                .expect("This is garunteed to be Some(...) by the parser")
+                .first()
+                .expect("This is garunteed to be Some(...) by the parser")
         )),
         RecordType::MX => Some(format!(
             "{} \"\x1b[0;95m{}\x1b[0m\"",
             data.get_u16(),
-            domain.expect("This is garunteed to be Some(...) by the parser")
+            domain
+                .expect("This is garunteed to be Some(...) by the parser")
+                .first()
+                .expect("This is garunteed to be Some(...) by the parser")
         )),
+        RecordType::SOA => {
+            let mut domains = domain.expect("This is garunteed to be Some(...) by the parser");
+
+            let mname = domains.remove(0);
+
+            let mut rname = domains.remove(0);
+            let mut email = String::new();
+            if !rname.0.is_empty() {
+                let item = rname.0.remove(0);
+                email += &item;
+                email += "@";
+
+                for item in rname.0 {
+                    email += &item;
+                    email += ".";
+                }
+            }
+
+            data.advance(after_ptr.expect("This is garunteed to be Some(...) by the parser"));
+
+            let email = &email[0..email.len() - 1];
+
+            Some(format!(
+                "\"\x1b[0;95m{}\x1b[0m\" {email} {} {} {} {} {}",
+                mname.idna_to_string(),
+                data.get_u32(),
+                data.get_u32(),
+                data.get_u32(),
+                data.get_u32(),
+                data.get_u32(),
+            ))
+        }
         RecordType::AAAA => Some(format!(
             "\x1b[0;35m{}\x1b[0m",
             Ipv6Addr::new(
@@ -139,16 +184,32 @@ fn format_data(rtype: RecordType, mut data: Bytes, domain: Option<Domain>) -> Op
             Ipv4Addr::new(data[0], data[1], data[2], data[3])
         )),
         RecordType::TXT => {
-            match std::str::from_utf8(&data) {
-                Ok(data) => Some(format!("\"\x1b[0;32m{data}\x1b[0m\"")),
-                Err(err) => {
-                    // err.
-                    // // TODO: handle this
-                    // eprintln!("uhoh - {err}");
-                    // None
-                    Some(format!("This record contained invalid utf-8"))
+            let mut res = "\"\x1b[0;32m".to_string();
+            let mut length = data.get_u8() as usize;
+            while length != 0 && data.len() >= length {
+                match std::str::from_utf8(&data.slice(0..length)) {
+                    Ok(data) => {
+                        res += data;
+                    }
+                    Err(_err) => {
+                        // err.
+                        // // TODO: handle this
+                        // eprintln!("uhoh - {err}");
+                        // None
+                        return Some("This record contained invalid utf-8".to_string());
+                    }
+                };
+
+                data.advance(length);
+
+                if data.is_empty() {
+                    break;
                 }
+
+                length = data.get_u8() as usize;
             }
+
+            Some(res + "\x1b[0m\"")
         }
         _ => {
             None //format!("{data:#?}")
@@ -208,7 +269,9 @@ fn main() {
 
     let mut domain = vec![];
     for part in cli.domain.clone().split('.') {
-        domain.push(part.to_owned());
+        if !part.is_empty() {
+            domain.push(part.to_owned());
+        }
     }
 
     let default_port = match transport {
@@ -253,8 +316,26 @@ fn main() {
     }
 
     let mut unsupported = HashSet::new();
+    // AUTHORITY
+    // ANSWER
+    // ADDITIONAL
+    println!("SECTION    DOMAIN                  TTL      CLASS   TYPE    DATA");
+
+    let mut records = vec![];
 
     for record in res.answers {
+        records.push(("ANSWER    ", record));
+    }
+
+    for record in res.authorities {
+        records.push(("AUTHORITY ", record));
+    }
+
+    for record in res.additional {
+        records.push(("ADDITIONAL", record));
+    }
+
+    for (section, record) in records {
         if record.rclass != RecordClass::IN {
             // TODO: handle this
             println!("womp womp womp");
@@ -263,10 +344,15 @@ fn main() {
 
         //hackclub.com.           3789    IN      HINFO   "RFC8482" ""
         //google.com.             300     IN      A       74.125.142.139
-        if let Some(display) = format_data(record.rtype, record.data, record.domain_data) {
+        if let Some(display) = format_data(
+            record.rtype,
+            record.data,
+            record.domain_data,
+            record.after_ptr,
+        ) {
             println!(
-                "\x1b[0;96m{:<23}\x1b[0;93m {:<8}\x1b[0m {:<7} {:<7} {}",
-                record.name.to_string(),
+                "{section} \x1b[0;96m{:<23}\x1b[0;93m {:<8}\x1b[0m {:<7} {:<7} {}",
+                record.name.idna_to_string(),
                 ttl_to_string(record.ttl),
                 format!("{:#?}", record.rclass),
                 format!("{:#?}", record.rtype),

@@ -72,7 +72,9 @@ fn resolve_domain(
         for authority in &res.authorities {
             if let Some(domain) = &authority.domain_data {
                 for additional in &res.additional {
-                    if additional.name == *domain && additional.rtype == RecordType::A {
+                    if additional.name == *domain.first().expect("Has to exist")
+                        && additional.rtype == RecordType::A
+                    {
                         authority_sources.push(Ipv4Addr::new(
                             additional.data[0],
                             additional.data[1],

@@ -229,14 +229,29 @@ impl Parsable for ResourceRecord {
 
         let data = buf.in_use.slice(0..data_len);
 
+        let mut after_ptr = None;
+
         let domain_data = match rtype {
+            // TODO: deal with the case of a CNAME having more data after the name but the buffer isnt properly advanced
+            // TODO: deal with name.len() >= data.len()
             // TODO: add tests for this
-            RecordType::NS | RecordType::CNAME => Some(Domain::parse(buf)?),
+            RecordType::NS | RecordType::CNAME => Some(vec![Domain::parse(buf)?]),
             RecordType::MX => {
                 buf.in_use.get_u16();
-                Some(Domain::parse(buf)?)
+                Some(vec![Domain::parse(buf)?])
             }
+            RecordType::SOA => {
+                let ptr = buf.in_use.remaining();
 
+                let mut tmp_buf = buf.clone();
+
+                let domains = vec![Domain::parse(&mut tmp_buf)?, Domain::parse(&mut tmp_buf)?];
+
+                after_ptr = Some(ptr - tmp_buf.in_use.remaining());
+
+                buf.in_use.advance(data_len);
+                Some(domains)
+            }
             _ => {
                 buf.in_use.advance(data_len);
 
@@ -251,6 +266,7 @@ impl Parsable for ResourceRecord {
             ttl,
             data,
             domain_data,
+            after_ptr,
         })
     }
 }

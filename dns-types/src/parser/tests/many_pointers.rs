@@ -37,6 +37,7 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
@@ -50,6 +51,7 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
@@ -64,6 +66,7 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
@@ -79,6 +82,7 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
@@ -95,27 +99,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
-                    "a".to_string(),
-                    "a".to_string(),
-                    "a".to_string(),
-                    "a".to_string(),
-                    "a".to_string(),
-                    "a".to_string(),
-                    "se".to_string(),
-                ]),
-                rtype: RecordType::ANY,
-                rclass: RecordClass::Unknown(254),
-                ttl: 0,
-                data: Bytes::new(),
-                domain_data: None,
-            },
-            ResourceRecord {
-                name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -130,10 +117,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -149,10 +136,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -169,10 +156,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -190,10 +177,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -212,10 +199,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -235,10 +222,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -259,10 +246,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -284,10 +271,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -310,10 +297,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -337,10 +324,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -365,10 +352,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -394,10 +381,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -424,10 +411,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -455,10 +442,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -487,10 +474,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -520,10 +507,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -554,10 +541,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -589,10 +576,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -625,10 +612,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -662,10 +649,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -700,10 +687,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -739,10 +726,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -779,10 +766,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -820,10 +807,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -862,10 +849,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -905,10 +892,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -949,10 +936,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -994,10 +981,10 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
             },
             ResourceRecord {
                 name: Domain(vec![
-                    "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
                     "a".to_string(),
@@ -1040,6 +1027,54 @@ fn test_decode_manypointers() {
                 ttl: 0,
                 data: Bytes::new(),
                 domain_data: None,
+                after_ptr: None,
+            },
+            ResourceRecord {
+                name: Domain(vec![
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "a".to_string(),
+                    "se".to_string(),
+                ]),
+                rtype: RecordType::ANY,
+                rclass: RecordClass::Unknown(254),
+                ttl: 0,
+                data: Bytes::new(),
+                domain_data: None,
+                after_ptr: None,
             },
         ],
         authorities: vec![],
