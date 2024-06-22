@@ -339,6 +339,44 @@ fn format_data(
 
             Some(format!("{critical_rendered} {tag} \"{value}\""))
         }
+        RecordType::HINFO => {
+            let mut res = "\"\x1b[0;32m".to_string();
+            let length = data.get_u8() as usize;
+
+            match std::str::from_utf8(&data.slice(0..length)) {
+                Ok(data) => {
+                    res += data;
+                }
+                Err(_err) => {
+                    // err.
+                    // // TODO: handle this
+                    // eprintln!("uhoh - {err}");
+                    // None
+                    return Some("This record contained invalid utf-8".to_string());
+                }
+            };
+
+            res += "\x1b[0m\" \"\x1b[0;32m";
+
+            data.advance(length);
+
+            let length = data.get_u8() as usize;
+
+            match std::str::from_utf8(&data.slice(0..length)) {
+                Ok(data) => {
+                    res += data;
+                }
+                Err(_err) => {
+                    // err.
+                    // // TODO: handle this
+                    // eprintln!("uhoh - {err}");
+                    // None
+                    return Some("This record contained invalid utf-8".to_string());
+                }
+            };
+
+            Some(res + "\x1b[0m\"")
+        }
         _ => {
             None //format!("{data:#?}")
         }
