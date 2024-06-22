@@ -2,17 +2,20 @@
 #![deny(clippy::unwrap_used)]
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
 use bytes::{Buf, Bytes};
 use clap::Parser;
-use types::{
-    parser::{BytesBuf, Parsable},
-    Domain, Question, RecordClass, RecordType,
+use formatters::{
+    format_caa, format_character_string, format_domain, format_hinfo, format_ipv4, format_ipv6,
+    format_soa, format_svcb,
 };
+use types::{Domain, Question, RecordClass, RecordType};
 use utils::{make_request, Transport};
+
+mod formatters;
 
 static DEFAULT_NAMESERVER: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
@@ -119,26 +122,16 @@ struct Cli {
     no_color: bool,
 }
 
-fn format_domain(domain: &Domain, idna: bool) -> String {
-    let res = if idna {
-        domain.idna_to_string()
-    } else {
-        domain.to_string()
-    };
-
-    format!("\x1b[0;95m{res}\x1b[0m")
-}
-
-#[allow(clippy::too_many_lines)] // TODO: dont
 fn format_data(
     rtype: RecordType,
     mut data: Bytes,
-    domain: Option<Vec<Domain>>,
+    _no_color: bool,
+    domains: Option<Vec<Domain>>,
     after_ptr: Option<usize>,
 ) -> Option<String> {
     match rtype {
         RecordType::CNAME | RecordType::NS => Some(format_domain(
-            domain
+            domains
                 .expect("This is garunteed to be Some(...) by the parser")
                 .first()
                 .expect("This is garunteed to be Some(...) by the parser"),
@@ -148,251 +141,48 @@ fn format_data(
             "{} {}",
             data.get_u16(),
             format_domain(
-                domain
+                domains
                     .expect("This is garunteed to be Some(...) by the parser")
                     .first()
                     .expect("This is garunteed to be Some(...) by the parser"),
                 true
             )
         )),
-        RecordType::SOA => {
-            let mut domains = domain.expect("This is garunteed to be Some(...) by the parser");
-
-            let mname = domains.remove(0);
-
-            let mut rname = domains.remove(0);
-            let mut email = String::new();
-            if !rname.0.is_empty() {
-                let item = rname.0.remove(0);
-                email += &item;
-                email += "@";
-
-                for item in rname.0 {
-                    email += &item;
-                    email += ".";
-                }
-            }
-
-            data.advance(after_ptr.expect("This is garunteed to be Some(...) by the parser"));
-
-            let email = &email[0..email.len() - 1];
-
-            Some(format!(
-                "\"\x1b[0;95m{}\x1b[0m\" {email} {} {} {} {} {}",
-                format_domain(&mname, true),
-                data.get_u32(),
-                data.get_u32(),
-                data.get_u32(),
-                data.get_u32(),
-                data.get_u32(),
-            ))
-        }
-        RecordType::AAAA => Some(format!(
-            "\x1b[0;35m{}\x1b[0m",
-            Ipv6Addr::new(
-                data.get_u16(),
-                data.get_u16(),
-                data.get_u16(),
-                data.get_u16(),
-                data.get_u16(),
-                data.get_u16(),
-                data.get_u16(),
-                data.get_u16()
-            )
+        RecordType::SOA => Some(format_soa(
+            data,
+            domains.expect("This is garunteed to be Some(...) by the parser"),
+            after_ptr.expect("This is garunteed to be Some(...) by the parser"),
         )),
-        RecordType::A => Some(format!(
-            "\x1b[0;35m{}\x1b[0m",
-            Ipv4Addr::new(data[0], data[1], data[2], data[3])
-        )),
+        RecordType::AAAA => Some(format_ipv6(Ipv6Addr::new(
+            data.get_u16(),
+            data.get_u16(),
+            data.get_u16(),
+            data.get_u16(),
+            data.get_u16(),
+            data.get_u16(),
+            data.get_u16(),
+            data.get_u16(),
+        ))),
+        RecordType::A => Some(format_ipv4(Ipv4Addr::new(
+            data[0], data[1], data[2], data[3],
+        ))),
         RecordType::TXT => {
             let mut res = "\"\x1b[0;32m".to_string();
-            let mut length = data.get_u8() as usize;
-            while length != 0 && data.len() >= length {
-                match std::str::from_utf8(&data.slice(0..length)) {
-                    Ok(data) => {
-                        res += data;
-                    }
-                    Err(_err) => {
-                        // err.
-                        // // TODO: handle this
-                        // eprintln!("uhoh - {err}");
-                        // None
-                        return Some("This record contained invalid utf-8".to_string());
-                    }
-                };
-
-                data.advance(length);
-
-                if data.is_empty() {
-                    break;
-                }
-
-                length = data.get_u8() as usize;
-            }
-
-            Some(res + "\x1b[0m\"")
-        }
-        RecordType::SVCB | RecordType::HTTPS => {
-            let priority = data.get_u16();
-
-            let mut buf = BytesBuf::from_bytes(data);
-
-            // OK because domain has to be UNCOMPRESSED according to rfc9460 section 2.2
-            let name = Domain::parse(&mut buf).expect("TODO: deal with this");
-
-            let mut data = buf.take();
-
-            let mut attributes = HashMap::new();
-
             while !data.is_empty() {
-                let key = data.get_u16();
-                let value_len = data.get_u16() as usize;
-
-                let value = data[0..value_len].to_vec();
-                data.advance(value_len);
-
-                attributes.insert(key, value);
-            }
-
-            let mut attributes_rendered = String::new();
-
-            for (key, val) in attributes {
-                attributes_rendered += " ";
-
-                let mut data = Bytes::from(val);
-
-                // See https://www.iana.org/assignments/dns-svcb/dns-svcb.xhtml
-                match key {
-                    1 => {
-                        attributes_rendered += "alpn=\"";
-
-                        while !data.is_empty() {
-                            let len = data.get_u8() as usize;
-
-                            match std::str::from_utf8(&data[0..len]) {
-                                Ok(part) => attributes_rendered += part,
-                                Err(_) => return None,
-                            }
-
-                            data.advance(len);
-                            attributes_rendered += ",";
-                        }
-
-                        attributes_rendered =
-                            attributes_rendered[0..attributes_rendered.len() - 1].to_string();
-
-                        attributes_rendered += "\"";
+                match format_character_string(&mut data) {
+                    Ok(data) => {
+                        res += &data;
                     }
-                    // TODO: find a domain to test: port, ipv4hint, and ipv6hint rendering on
-                    3 => {
-                        attributes_rendered += "port=";
-                        attributes_rendered += &data.get_u16().to_string();
-                    }
-                    4 => {
-                        attributes_rendered += "ipv4hint=";
-
-                        while !data.is_empty() {
-                            attributes_rendered += &Ipv4Addr::new(
-                                data.get_u8(),
-                                data.get_u8(),
-                                data.get_u8(),
-                                data.get_u8(),
-                            )
-                            .to_string();
-                            attributes_rendered += ",";
-                        }
-
-                        attributes_rendered = attributes_rendered[1..].to_string();
-                    }
-                    6 => {
-                        attributes_rendered += "ipv6hint=";
-
-                        while !data.is_empty() {
-                            attributes_rendered += &Ipv6Addr::new(
-                                data.get_u16(),
-                                data.get_u16(),
-                                data.get_u16(),
-                                data.get_u16(),
-                                data.get_u16(),
-                                data.get_u16(),
-                                data.get_u16(),
-                                data.get_u16(),
-                            )
-                            .to_string();
-                            attributes_rendered += ",";
-                        }
-
-                        attributes_rendered = attributes_rendered[1..].to_string();
-                    }
-                    _ => {}
+                    Err(err) => return Some(err.to_string()),
                 }
             }
-
-            Some(format!(
-                "{priority} {} {}",
-                format_domain(&name, true),
-                &attributes_rendered[1..]
-            ))
-        }
-        RecordType::CAA => {
-            let flags = data.get_u8();
-
-            let critical = flags & 128 == 128;
-
-            let tag_len = data.get_u8() as usize;
-            let tag = std::str::from_utf8(&data[..tag_len]).expect("TODO: deal with this");
-
-            let value = std::str::from_utf8(&data[tag_len..]).expect("TODO: deal with this");
-
-            let critical_rendered = if critical {
-                "\x1b[1;91mcritical\x1b[0m"
-            } else {
-                "\x1b[1;92mnormal\x1b[0m"
-            };
-
-            Some(format!("{critical_rendered} {tag} \"{value}\""))
-        }
-        RecordType::HINFO => {
-            let mut res = "\"\x1b[0;32m".to_string();
-            let length = data.get_u8() as usize;
-
-            match std::str::from_utf8(&data.slice(0..length)) {
-                Ok(data) => {
-                    res += data;
-                }
-                Err(_err) => {
-                    // err.
-                    // // TODO: handle this
-                    // eprintln!("uhoh - {err}");
-                    // None
-                    return Some("This record contained invalid utf-8".to_string());
-                }
-            };
-
-            res += "\x1b[0m\" \"\x1b[0;32m";
-
-            data.advance(length);
-
-            let length = data.get_u8() as usize;
-
-            match std::str::from_utf8(&data.slice(0..length)) {
-                Ok(data) => {
-                    res += data;
-                }
-                Err(_err) => {
-                    // err.
-                    // // TODO: handle this
-                    // eprintln!("uhoh - {err}");
-                    // None
-                    return Some("This record contained invalid utf-8".to_string());
-                }
-            };
 
             Some(res + "\x1b[0m\"")
         }
-        _ => {
-            None //format!("{data:#?}")
-        }
+        RecordType::SVCB | RecordType::HTTPS => format_svcb(data),
+        RecordType::CAA => Some(format_caa(data)),
+        RecordType::HINFO => Some(format_hinfo(data)),
+        _ => None,
     }
 }
 
@@ -416,7 +206,7 @@ fn ttl_to_string(ttl: u32) -> String {
 
 fn main() {
     let cli = Cli::parse();
-    let _no_color =
+    let no_color =
         (!atty::is(atty::Stream::Stdout) || std::env::var_os("NO_COLOR").is_some() || cli.no_color)
             && std::env::var_os("FORCE_COLOR").is_none();
 
@@ -433,16 +223,8 @@ fn main() {
     };
 
     let qtype = if let Some(qtype) = cli.record_type {
-        // println!(
-        //     "Requesting all {} records for {} via {transport}",
-        //     qtype.to_string(),
-        //     cli.domain
-        // );
-
         qtype.into()
     } else {
-        // println!("Requesting all records for {} via {transport}", cli.domain);
-
         RecordType::ANY
     };
 
@@ -472,6 +254,16 @@ fn main() {
         IpAddr::V6(v6) => SocketAddr::V6(SocketAddrV6::new(v6, port, 0, 0)),
     };
 
+    make_req(domain, qtype, source, transport, no_color);
+}
+
+fn make_req(
+    domain: Vec<String>,
+    qtype: RecordType,
+    source: SocketAddr,
+    transport: Transport,
+    no_color: bool,
+) {
     let res = match make_request(
         Question {
             name: Domain(domain),
@@ -489,17 +281,6 @@ fn main() {
         }
     };
 
-    if res.answers.is_empty() {
-        // TODO: handle this
-        // println!("womp womp");
-    }
-
-    let mut unsupported = HashSet::new();
-    // AUTHORITY
-    // ANSWER
-    // ADDITIONAL
-    println!("SECTION    DOMAIN                  TTL      CLASS   TYPE    DATA");
-
     let mut records = vec![];
 
     for record in res.answers {
@@ -514,6 +295,14 @@ fn main() {
         records.push(("ADDITIONAL", record));
     }
 
+    if records.is_empty() {
+        eprintln!("\x1b[0;91mNo results");
+        return;
+    }
+
+    println!("SECTION    DOMAIN                  TTL      CLASS   TYPE    DATA");
+
+    let mut unsupported = HashSet::new();
     for (section, record) in records {
         if record.rclass != RecordClass::IN {
             // TODO: handle this
@@ -526,6 +315,7 @@ fn main() {
         if let Some(display) = format_data(
             record.rtype,
             record.data,
+            no_color,
             record.domain_data,
             record.after_ptr,
         ) {
@@ -544,9 +334,9 @@ fn main() {
 
     for rtype in unsupported {
         if let RecordType::Unknown(id) = rtype {
-            println!("\x1b[0;91mUnsupported record type with id {id}");
+            eprintln!("\x1b[0;91mUnsupported record type with id {id}");
         } else {
-            println!("\x1b[0;91mUnsupported record type {rtype:#?}");
+            eprintln!("\x1b[0;91mUnsupported record type {rtype:#?}");
         }
     }
 }
