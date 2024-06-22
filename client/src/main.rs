@@ -244,15 +244,23 @@ fn format_data(
             let mut attributes_rendered = String::new();
 
             for (key, val) in attributes {
+                attributes_rendered += " ";
+
+                let mut data = Bytes::from(val);
+
+                // See https://www.iana.org/assignments/dns-svcb/dns-svcb.xhtml
                 match key {
                     1 => {
                         attributes_rendered += "alpn=\"";
-                        let mut data = Bytes::from(val);
 
                         while !data.is_empty() {
                             let len = data.get_u8() as usize;
-                            attributes_rendered +=
-                                std::str::from_utf8(&data[0..len]).expect("TODO: deal with this");
+
+                            match std::str::from_utf8(&data[0..len]) {
+                                Ok(part) => attributes_rendered += part,
+                                Err(_) => return None,
+                            }
+
                             data.advance(len);
                             attributes_rendered += ",";
                         }
@@ -262,15 +270,74 @@ fn format_data(
 
                         attributes_rendered += "\"";
                     }
-                    2 => {}
+                    // TODO: find a domain to test: port, ipv4hint, and ipv6hint rendering on
+                    3 => {
+                        attributes_rendered += "port=";
+                        attributes_rendered += &data.get_u16().to_string();
+                    }
+                    4 => {
+                        attributes_rendered += "ipv4hint=";
+
+                        while !data.is_empty() {
+                            attributes_rendered += &Ipv4Addr::new(
+                                data.get_u8(),
+                                data.get_u8(),
+                                data.get_u8(),
+                                data.get_u8(),
+                            )
+                            .to_string();
+                            attributes_rendered += ",";
+                        }
+
+                        attributes_rendered = attributes_rendered[1..].to_string();
+                    }
+                    6 => {
+                        attributes_rendered += "ipv6hint=";
+
+                        while !data.is_empty() {
+                            attributes_rendered += &Ipv6Addr::new(
+                                data.get_u16(),
+                                data.get_u16(),
+                                data.get_u16(),
+                                data.get_u16(),
+                                data.get_u16(),
+                                data.get_u16(),
+                                data.get_u16(),
+                                data.get_u16(),
+                            )
+                            .to_string();
+                            attributes_rendered += ",";
+                        }
+
+                        attributes_rendered = attributes_rendered[1..].to_string();
+                    }
                     _ => {}
                 }
             }
 
             Some(format!(
-                "{priority} {} {attributes_rendered}",
-                name.idna_to_string()
+                "{priority} {} {}",
+                name.idna_to_string(),
+                &attributes_rendered[1..]
             ))
+        }
+        RecordType::CAA => {
+            let flags = data.get_u8();
+
+            let critical = flags & 128 == 128;
+
+            let tag_len = data.get_u8() as usize;
+            let tag = std::str::from_utf8(&data[..tag_len]).expect("TODO: deal with this");
+
+            let value = std::str::from_utf8(&data[tag_len..]).expect("TODO: deal with this");
+
+            let critical_rendered = if critical {
+                "\x1b[1;91mcritical\x1b[0m"
+            } else {
+                "\x1b[1;92mnormal\x1b[0m"
+            };
+
+            Some(format!("{critical_rendered} {tag} \"{value}\""))
         }
         _ => {
             None //format!("{data:#?}")
