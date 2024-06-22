@@ -2,13 +2,16 @@
 #![deny(clippy::unwrap_used)]
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
 use bytes::{Buf, Bytes};
 use clap::Parser;
-use types::{Domain, Question, RecordClass, RecordType};
+use types::{
+    parser::{BytesBuf, Parsable},
+    Domain, Question, RecordClass, RecordType,
+};
 use utils::{make_request, Transport};
 
 static DEFAULT_NAMESERVER: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
@@ -60,8 +63,12 @@ record_type! {
         SOA,
         ANY,
         TXT,
+        CAA,
+        SVCB,
         AAAA,
+        HTTPS,
         CNAME,
+        HINFO,
     }
 }
 
@@ -112,6 +119,7 @@ struct Cli {
     no_color: bool,
 }
 
+#[allow(clippy::too_many_lines)] // TODO: dont
 fn format_data(
     rtype: RecordType,
     mut data: Bytes,
@@ -210,6 +218,59 @@ fn format_data(
             }
 
             Some(res + "\x1b[0m\"")
+        }
+        RecordType::SVCB | RecordType::HTTPS => {
+            let priority = data.get_u16();
+
+            let mut buf = BytesBuf::from_bytes(data);
+
+            // OK because domain has to be UNCOMPRESSED according to rfc9460 section 2.2
+            let name = Domain::parse(&mut buf).expect("TODO: deal with this");
+
+            let mut data = buf.take();
+
+            let mut attributes = HashMap::new();
+
+            while !data.is_empty() {
+                let key = data.get_u16();
+                let value_len = data.get_u16() as usize;
+
+                let value = data[0..value_len].to_vec();
+                data.advance(value_len);
+
+                attributes.insert(key, value);
+            }
+
+            let mut attributes_rendered = String::new();
+
+            for (key, val) in attributes {
+                match key {
+                    1 => {
+                        attributes_rendered += "alpn=\"";
+                        let mut data = Bytes::from(val);
+
+                        while !data.is_empty() {
+                            let len = data.get_u8() as usize;
+                            attributes_rendered +=
+                                std::str::from_utf8(&data[0..len]).expect("TODO: deal with this");
+                            data.advance(len);
+                            attributes_rendered += ",";
+                        }
+
+                        attributes_rendered =
+                            attributes_rendered[0..attributes_rendered.len() - 1].to_string();
+
+                        attributes_rendered += "\"";
+                    }
+                    2 => {}
+                    _ => {}
+                }
+            }
+
+            Some(format!(
+                "{priority} {} {attributes_rendered}",
+                name.idna_to_string()
+            ))
         }
         _ => {
             None //format!("{data:#?}")

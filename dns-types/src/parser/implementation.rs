@@ -53,6 +53,11 @@ impl BytesBuf {
     pub fn get_original(&self) -> Bytes {
         self.original.clone()
     }
+
+    /// Takes the in_use buffer
+    pub fn take(self) -> Bytes {
+        self.in_use
+    }
 }
 
 impl Parsable for Domain {

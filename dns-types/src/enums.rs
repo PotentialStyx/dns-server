@@ -81,12 +81,17 @@ useful_enum! {
         MX = 15,    // mail exchange
         TXT = 16,   // text strings
         AAAA = 28, // ipv6
+        SVCB = 64,
+        HTTPS = 65,
 
         // QTYPE
         AXFR = 252,  // A request for a transfer of an entire zone
         MAILB = 253, // A request for mailbox-related records (MB, MG or MR)
         MAILA = 254, // A request for mail agent RRs (Obsolete - see MX)
         ANY = 255,   // A request for all records
+
+        // New stuff
+        CAA = 257, // Certification Authority Authorization
     }
 }
 

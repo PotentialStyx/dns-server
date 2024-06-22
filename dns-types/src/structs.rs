@@ -11,6 +11,10 @@ pub struct Domain(pub Vec<String>);
 /// TODO: add tests for this maybe(?)
 impl Display for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_empty() {
+            return f.write_str(".");
+        }
+
         for part in &self.0 {
             f.write_str(part)?;
             f.write_str(".")?;
@@ -22,6 +26,10 @@ impl Display for Domain {
 
 impl Domain {
     pub fn idna_to_string(&self) -> String {
+        if self.0.is_empty() {
+            return String::from(".");
+        }
+
         let mut ret = String::new();
 
         for part in &self.0 {
