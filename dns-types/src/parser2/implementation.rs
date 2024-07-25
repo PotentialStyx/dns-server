@@ -185,7 +185,6 @@ impl Parsable for Question {
         let name = {
             let name_res = Domain::parse(buf);
             match name_res {
-                // PartialOk from Domain turns into a FullErr because if the domain isn't parsable then nothing has been parsed and there is no reason to return an empty Question
                 PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
                     return PartialResult::FullErr(err);
                 }
@@ -235,7 +234,6 @@ impl Parsable for ResourceRecord {
         let name = {
             let name_res = Domain::parse(buf);
             match name_res {
-                // PartialOk from Domain turns into a FullErr because if the domain isn't parsable then nothing has been parsed and there is no reason to return an empty ResourceRecord
                 PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
                     return PartialResult::FullErr(err);
                 }
@@ -332,51 +330,118 @@ impl Parsable for ResourceRecord {
     }
 }
 
-// impl Parsable for Message {
-//     type Error = ParserError;
+pub enum MessageErrorLocation {
+    HeaderError,
+    QuestionError,
+    AnswerError,
+    AuthorityError,
+    AdditionalError,
+}
 
-//     fn parse(buf: &mut BytesBuf) -> Result<Self, Self::Error>
-//     where
-//         Self: std::marker::Sized,
-//     {
-//         let header = Header::parse(buf)?;
+impl Parsable for Message {
+    type Error = ParserError;
+    type ErrorLocation = MessageErrorLocation;
 
-//         if header.is_truncated {
-//             return Ok(Message {
-//                 header,
-//                 questions: vec![],
-//                 answers: vec![],
-//                 authorities: vec![],
-//                 additional: vec![],
-//             });
-//         }
+    fn parse(buf: &mut BytesBuf) -> PartialResult<Self, Self::ErrorLocation, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        let header = {
+            let header_res = Header::parse(buf);
+            match header_res {
+                PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
+                    return PartialResult::FullErr(err);
+                }
+                PartialResult::FullOk(value) => value,
+            }
+        };
 
-//         let mut questions = vec![];
-//         for _ in 0..header.questions {
-//             questions.push(Question::parse(buf)?);
-//         }
+        let mut questions = vec![];
+        for _ in 0..header.questions {
+            match Question::parse(buf) {
+                PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
+                    return PartialResult::PartialOk(
+                        Message {
+                            header,
+                            questions,
+                            answers: vec![],
+                            authorities: vec![],
+                            additional: vec![],
+                        },
+                        MessageErrorLocation::QuestionError,
+                        err,
+                    )
+                }
+                PartialResult::FullOk(value) => questions.push(value),
+            };
+        }
 
-//         let mut answers = vec![];
-//         for _ in 0..header.answer_records {
-//             answers.push(ResourceRecord::parse(buf)?);
-//         }
+        let mut answers = vec![];
+        for _ in 0..header.answer_records {
+            match ResourceRecord::parse(buf) {
+                PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
+                    return PartialResult::PartialOk(
+                        Message {
+                            header,
+                            questions,
+                            answers,
+                            authorities: vec![],
+                            additional: vec![],
+                        },
+                        MessageErrorLocation::AnswerError,
+                        err,
+                    )
+                }
+                PartialResult::FullOk(value) => answers.push(value),
+            };
+        }
 
-//         let mut authorities = vec![];
-//         for _ in 0..header.authority_records {
-//             authorities.push(ResourceRecord::parse(buf)?);
-//         }
+        let mut authorities = vec![];
+        for _ in 0..header.authority_records {
+            match ResourceRecord::parse(buf) {
+                PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
+                    return PartialResult::PartialOk(
+                        Message {
+                            header,
+                            questions,
+                            answers,
+                            authorities,
+                            additional: vec![],
+                        },
+                        MessageErrorLocation::AuthorityError,
+                        err,
+                    )
+                }
+                PartialResult::FullOk(value) => authorities.push(value),
+            };
+        }
 
-//         let mut additional = vec![];
-//         for _ in 0..header.additional_records {
-//             additional.push(ResourceRecord::parse(buf)?);
-//         }
+        let mut additional = vec![];
+        for _ in 0..header.additional_records {
+            match ResourceRecord::parse(buf) {
+                PartialResult::FullErr(err) | PartialResult::PartialOk(_, _, err) => {
+                    return PartialResult::PartialOk(
+                        Message {
+                            header,
+                            questions,
+                            answers,
+                            authorities,
+                            additional,
+                        },
+                        MessageErrorLocation::AdditionalError,
+                        err,
+                    )
+                }
+                PartialResult::FullOk(value) => additional.push(value),
+            };
+        }
 
-//         Ok(Message {
-//             header,
-//             questions,
-//             answers,
-//             authorities,
-//             additional,
-//         })
-//     }
-// }
+        PartialResult::FullOk(Message {
+            header,
+            questions,
+            answers,
+            authorities,
+            additional,
+        })
+    }
+}
